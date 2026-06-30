@@ -29,7 +29,11 @@ from dotenv import load_dotenv
 # parents depuis ce fichier jusqu'à le trouver). Mêmes clés que côté config
 # Windows : GEMINI_API_KEY est utilisée ici, MESHBRIDGE_PSK ne l'est pas
 # (le déchiffrement du canal se fait au niveau du firmware du nœud, pas ici).
-load_dotenv()
+# Charge automatiquement le .env à la racine du repo (remonte les dossiers
+# parents depuis ce fichier jusqu'à le trouver). override=True : le .env
+# fait toujours autorité, même si une variable du même nom existe déjà
+# dans le shell (ex. un ancien "export" laissé dans ~/.bashrc).
+load_dotenv(override=True)
 
 # ----------------------------------------------------------------------
 #  Configuration
