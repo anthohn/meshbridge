@@ -32,8 +32,6 @@ meshbridge/
 │   └── bridge.py              # Tourne sur le Raspberry Pi
 ├── scripts/
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config des 2 nœuds
-├── docs/
-│   └── MeshBridge-Notes.md    # Notes de fonctionnement détaillées
 ├── requirements.txt
 └── .gitignore
 ```
