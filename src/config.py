@@ -22,6 +22,29 @@ OLLAMA_MODEL = "llama3.2:1b"
 GEMINI_KEY   = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-3.5-flash"
 
+# --- Interface radio : BLE uniquement ---
+# Aurora est physiquement séparé du Pi (contre la fenêtre, mieux placé
+# côté LoRa). Le lien Pi ↔ Aurora se fait par Bluetooth Low Energy.
+AURORA_BLE_MAC = os.environ.get("AURORA_BLE_MAC", "")
+
+# Reconnexion automatique : le BLE peut décrocher (interférences WiFi
+# 2.4 GHz, distance, Aurora qui reboot). Le bridge relance l'interface
+# après chaque déconnexion, avec un délai qui augmente pour ne pas
+# saturer le bus Bluetooth en cas d'échec répété.
+BLE_RECONNECT_MIN_S = 5      # premier délai de retry
+BLE_RECONNECT_MAX_S = 60     # plafond du délai de retry
+
+# --- Choix de l'IA ---
+# "auto"  : Gemini si dispo, sinon bascule sur Ollama (recommandé)
+# "cloud" : force Gemini (échoue en local → fallback brut)
+# "local" : force Ollama (vrai off-grid garanti)
+# Surchargeable par requête avec un suffixe : "/ask ... !local" ou "!cloud"
+AI_MODE = "auto"
+
 # --- Comportement ---
-SEND_ACK = True                   # accusé de réception immédiat pour les
-ACK_TEXT = "⏳ traitement…"        # commandes lentes (web/ask/news)
+# Accusé de réception immédiat ("⏳") pour les commandes lentes.
+# Désactivé par défaut : chaque accusé = une émission radio en plus
+# (consomme le budget légal des 10 % d'airtime/heure). Passe à True
+# si tu préfères le confort du feedback immédiat.
+SEND_ACK = False
+ACK_TEXT = "⏳ traitement…"

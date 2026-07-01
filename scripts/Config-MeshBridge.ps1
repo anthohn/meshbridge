@@ -328,8 +328,33 @@ function Show-Menu {
     Write-Host " 1. Déployer + vérifier le Pont Maison (Heltec v3)"
     Write-Host " 2. Déployer + vérifier le Nœud Portable (LilyGO)"
     Write-Host " 3. Vérifier seulement le nœud branché"
-    Write-Host " 4. Quitter"
+    Write-Host " 4. Activer le BLE sur Aurora (pour le lier au Pi sans USB)"
+    Write-Host " 5. Quitter"
     Write-Host "-------------------------------------------------"
+}
+
+function Enable-BleAurora {
+    Write-Title "Activation du BLE sur Aurora"
+    $pin = $env:AURORA_BLE_PIN
+    if ([string]::IsNullOrWhiteSpace($pin) -or $pin -notmatch '^\d{6}$') {
+        Write-Fail "AURORA_BLE_PIN doit être un PIN à 6 chiffres dans .env"
+        return
+    }
+    Write-Step "PIN utilisé : $pin (défini dans .env)"
+    Invoke-Meshtastic @(
+        "--set", "bluetooth.enabled", "true",
+        "--set", "bluetooth.mode", "FixedPin",
+        "--set", "bluetooth.fixed_pin", $pin
+    ) | Out-Null
+
+    Write-Ok "BLE activé sur Aurora."
+    Write-Host ""
+    Write-Host "Prochaines étapes côté Raspberry Pi :" -ForegroundColor Yellow
+    Write-Host "  1) Débranche Aurora de ce PC, alimente-le près de la fenêtre."
+    Write-Host "  2) Sur le Pi : bluetoothctl → scan on → repère 'Meshtastic_*'"
+    Write-Host "  3) pair / trust / connect avec le PIN $pin"
+    Write-Host "  4) Note la MAC affichée, mets-la dans AURORA_BLE_MAC (.env du Pi)"
+    Write-Host "  5) python3 src/bridge.py"
 }
 
 Test-Prerequisites
@@ -337,7 +362,7 @@ Read-Host "`nPrérequis OK. Appuie sur Entrée pour continuer"
 
 do {
     Show-Menu
-    $choix = Read-Host "Sélectionne une option (1-4)"
+    $choix = Read-Host "Sélectionne une option (1-5)"
 
     switch ($choix) {
         '1' { Deploy-Node -Type "Maison";   Read-Host "`nEntrée pour revenir au menu" }
@@ -355,7 +380,8 @@ do {
             }
             Read-Host "`nEntrée pour revenir au menu"
         }
-        '4' { Write-Host "Fermeture..."; break }
+        '4' { Enable-BleAurora; Read-Host "`nEntrée pour revenir au menu" }
+        '5' { Write-Host "Fermeture..."; break }
         default { Write-Host "Option invalide." -ForegroundColor Red; Start-Sleep -Seconds 1 }
     }
-} while ($choix -ne '4')
+} while ($choix -ne '5')
