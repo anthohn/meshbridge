@@ -28,10 +28,17 @@ Détails complets : [`docs/MeshBridge-Notes.md`](docs/MeshBridge-Notes.md)
 
 ```
 meshbridge/
-├── src/
-│   └── bridge.py              # Tourne sur le Raspberry Pi
+├── src/                       # Code du relai (tourne sur le Raspberry Pi)
+│   ├── bridge.py              #   point d'entrée : boucle mesh, worker non bloquant
+│   ├── config.py              #   constantes + chargement du .env
+│   ├── ai.py                  #   compression IA en cascade (cloud → local → brut)
+│   ├── commands.py            #   registre des commandes /… + répartiteur
+│   └── formatting.py          #   troncature LoRa + étiquette de source
 ├── scripts/
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config des 2 nœuds
+├── docs/
+│   └── MeshBridge-Notes.md    # Notes de fonctionnement détaillées
+├── .env.example
 ├── requirements.txt
 └── .gitignore
 ```
@@ -95,12 +102,14 @@ pip install meshtastic
 
 | Commande | Effet |
 |---|---|
-| `PING` | Test de connectivité |
-| `METEO <ville>` | Météo compacte |
-| `NEWS` | Titres d'actualité résumés |
-| `WEB <url>` | Résumé IA de n'importe quelle page |
-| `ASK <question>` | Réponse directe d'une IA |
-| `HELP` | Liste des commandes |
+| `/ping` | Test de connectivité |
+| `/meteo <ville>` | Météo compacte (source directe) |
+| `/news` | Titres d'actualité résumés (⚡/🏠) |
+| `/web <url>` | Résumé IA de n'importe quelle page (⚡/🏠) |
+| `/ask <question>` | Réponse directe d'une IA (⚡/🏠) |
+| `/help` | Liste des commandes |
+
+Indicateur de source dans les réponses IA : **⚡** = Gemini (cloud), **🏠** = Ollama (local), **✂️** = tronqué (aucune IA disponible).
 
 ---
 
