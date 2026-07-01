@@ -37,7 +37,8 @@ meshbridge/
 │   ├── commands.py            #   registre des commandes /… + répartiteur
 │   └── formatting.py          #   troncature LoRa + étiquette de source
 ├── scripts/
-│   └── Config-MeshBridge.ps1  # Déploie + vérifie la config des 2 nœuds
+│   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
+│   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
 ├── docs/
 │   └── MeshBridge-Notes.md    # Notes de fonctionnement détaillées
 ├── .env.example
@@ -76,8 +77,8 @@ AURORA_BLE_PIN=123456                 # côté PC (activation BLE d'Aurora)
 
 ⚠️ **Copie ce `.env` sur chaque machine séparément** (PC pour la config des nœuds, Raspberry Pi pour le bridge). Ce n'est pas un fichier synchronisé — chaque machine a besoin des variables qui la concernent. Génère une clé PSK si tu n'en as pas :
 
-```powershell
-[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))
+```bash
+python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 
 ---
@@ -86,9 +87,9 @@ AURORA_BLE_PIN=123456                 # côté PC (activation BLE d'Aurora)
 
 ### 1. Configuration initiale des nœuds (PC, Aurora branché en USB)
 
-```powershell
-pip install meshtastic
-.\scripts\Config-MeshBridge.ps1
+```bash
+pip install meshtastic python-dotenv
+python3 scripts/config_meshbridge.py
 ```
 
 Options du menu, dans l'ordre :
