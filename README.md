@@ -22,8 +22,6 @@ Le téléphone n'a jamais de connexion télécom. Toutes les commandes transiten
 
 Aurora est physiquement séparé du Pi (lien BLE) pour être placé à l'endroit radio-optimal (fenêtre, hauteur), sans être contraint par le trajet d'un câble USB.
 
-Détails complets : [`docs/MeshBridge-Notes.md`](docs/MeshBridge-Notes.md)
-
 ---
 
 ## Structure du repo
@@ -39,8 +37,6 @@ meshbridge/
 ├── scripts/
 │   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
-├── docs/
-│   └── MeshBridge-Notes.md    # Notes de fonctionnement détaillées
 ├── .env.example
 ├── requirements.txt
 └── .gitignore

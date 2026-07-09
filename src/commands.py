@@ -27,17 +27,17 @@ class Reply:
 
 @dataclass
 class Command:
-    handler: Callable[[str], Reply]
+    handler: Callable[[str, str], Reply]   # (arg, mode IA) → Reply
     usage: str
     slow: bool = False             # True → accusé de réception + traité en tâche de fond
 
 
 # ---------------------------------------------------------------- handlers
-def cmd_ping(arg: str) -> Reply:
+def cmd_ping(arg: str, mode: str) -> Reply:
     return Reply("pong ✅ relai actif")
 
 
-def cmd_meteo(arg: str) -> Reply:
+def cmd_meteo(arg: str, mode: str) -> Reply:
     ville = arg.strip() or "Geneve"
     url = f"https://wttr.in/{ville}?format=%l:+%c+%t+%w+%p&m"
     r = requests.get(url, timeout=config.HTTP_TIMEOUT)
@@ -45,7 +45,7 @@ def cmd_meteo(arg: str) -> Reply:
     return Reply(r.text.strip())   # source directe (API), pas d'IA
 
 
-def cmd_news(arg: str) -> Reply:
+def cmd_news(arg: str, mode: str) -> Reply:
     ids = requests.get(
         "https://hacker-news.firebaseio.com/v0/topstories.json",
         timeout=config.HTTP_TIMEOUT,
@@ -58,11 +58,12 @@ def cmd_news(arg: str) -> Reply:
         ).json()
         titres.append(item.get("title", ""))
     text, source = compress(" | ".join(titres),
-                            "Résume ces titres d'actualité en français, format [1]...[2]...[3].")
+                            "Résume ces titres d'actualité en français, format [1]...[2]...[3].",
+                            mode)
     return Reply(text, source)
 
 
-def cmd_web(arg: str) -> Reply:
+def cmd_web(arg: str, mode: str) -> Reply:
     url = arg.strip()
     if not url:
         return Reply("Usage: /web <url>")
@@ -75,21 +76,23 @@ def cmd_web(arg: str) -> Reply:
     html = re.sub(r"<style.*?</style>", " ", html, flags=re.S | re.I)
     html = re.sub(r"<[^>]+>", " ", html)
     text, source = compress(" ".join(html.split()),
-                            f"Résume l'essentiel de cette page web ({url}).")
+                            f"Résume l'essentiel de cette page web ({url}).",
+                            mode)
     return Reply(text, source)
 
 
-def cmd_ask(arg: str) -> Reply:
+def cmd_ask(arg: str, mode: str) -> Reply:
     q = arg.strip()
     if not q:
         return Reply("Usage: /ask <question>")
     date = datetime.datetime.now().strftime("%d %B %Y")
     text, source = compress(
-        q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.")
+        q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.",
+        mode)
     return Reply(text, source)
 
 
-def cmd_help(arg: str) -> Reply:
+def cmd_help(arg: str, mode: str) -> Reply:
     return Reply(HELP_TEXT)
 
 
@@ -111,14 +114,25 @@ HELP_TEXT = "Cmds: " + " | ".join(c.usage for c in COMMANDS.values())
 
 
 # ---------------------------------------------------------------- dispatch
+# Suffixe optionnel "!local" / "!cloud" en fin de commande → surcharge AI_MODE
+_MODE_RE = re.compile(r"\s*!(local|cloud)\s*$", re.IGNORECASE)
+
+
 def dispatch(verb: str, arg: str) -> str:
     """Exécute une commande déjà parsée et renvoie le texte final (< MAX_LEN)."""
     cmd = COMMANDS.get(verb)
     if cmd is None:
         return trim(f"❓ /{verb} inconnu. Tape /help")
+
+    mode = config.AI_MODE
+    m = _MODE_RE.search(arg)
+    if m:
+        mode = m.group(1).lower()
+        arg = arg[:m.start()].strip()
+
     try:
-        log.info(f"exec /{verb} {arg!r}")
-        reply = cmd.handler(arg)
+        log.info(f"exec /{verb} {arg!r} (ia={mode})")
+        reply = cmd.handler(arg, mode)
     except Exception as e:
         log.error(f"/{verb} erreur : {e}")
         return trim(f"⚠️ erreur sur /{verb}")
