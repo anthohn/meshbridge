@@ -38,6 +38,7 @@ meshbridge/
 ├── scripts/
 │   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
+├── tests/                     # Suite pytest (lancée en CI à chaque push)
 ├── .env.example
 ├── requirements.txt
 └── .gitignore
@@ -148,6 +149,19 @@ Les réponses IA se terminent par un suffixe indiquant leur source : `· via Gem
 /ask capitale du Japon !local
 /web https://fr.wikipedia.org/wiki/LoRa !cloud
 ```
+
+---
+
+## Tests
+
+La logique du bridge (troncature LoRa, cascade IA, parsing des commandes, garde-fous de `/web`, métriques) est couverte par une suite pytest, sans réseau ni matériel requis :
+
+```bash
+pip install pytest
+pytest
+```
+
+La suite tourne aussi automatiquement sur GitHub Actions à chaque push.
 
 ---
 

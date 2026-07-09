@@ -1,0 +1,20 @@
+# Lance la suite pytest à chaque push et pull request.
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: pip install -r requirements.txt pytest
+
+      - name: Lancer les tests
+        run: pytest -v
