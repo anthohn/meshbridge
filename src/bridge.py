@@ -32,8 +32,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("meshbridge")
 
-# File d'attente des commandes + verrou d'émission (un seul writer à la fois)
-_tasks = queue.Queue()
+# File d'attente des commandes + verrou d'émission (un seul writer à la fois).
+# Bornée : voir config.QUEUE_MAX (anti-flood, budget duty cycle).
+_tasks = queue.Queue(maxsize=config.QUEUE_MAX)
 _send_lock = threading.Lock()
 
 # Référence partagée vers l'interface active. Un dict pour pouvoir la
@@ -103,10 +104,17 @@ def on_receive(packet, interface) -> None:
 
         log.info(f"[IN]  ch{channel} → /{verb} {arg!r}")
 
+        try:
+            _tasks.put_nowait((channel, verb, arg))
+        except queue.Full:
+            # On jette sans répondre : répondre à un flood amplifierait
+            # le trafic radio (duty cycle). L'événement reste loggé.
+            log.warning(f"file pleine ({config.QUEUE_MAX}) — /{verb} ignoré")
+            return
+
+        # ACK seulement si la commande est réellement en file
         if config.SEND_ACK and verb in SLOW:
             safe_send(config.ACK_TEXT, channel)
-
-        _tasks.put((channel, verb, arg))
 
     except Exception as e:
         log.error(f"on_receive : {e}")

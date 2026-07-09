@@ -5,10 +5,13 @@ Chaque commande est préfixée par "/". Les handlers renvoient un Reply
 mise en forme finale garantie < MAX_LEN octets.
 """
 import re
+import socket
 import logging
 import datetime
+import ipaddress
 from dataclasses import dataclass
 from typing import Callable
+from urllib.parse import urlparse, urljoin
 
 import requests
 
@@ -63,16 +66,64 @@ def cmd_news(arg: str, mode: str) -> Reply:
     return Reply(text, source)
 
 
+def _assert_public_host(url: str) -> None:
+    """Anti-SSRF : le Pi est une passerelle vers Internet, pas vers le LAN.
+    Refuse loopback, réseaux privés, lien-local, etc. (toutes les résolutions)."""
+    host = urlparse(url).hostname
+    if not host:
+        raise ValueError("URL invalide")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        raise ValueError(f"hôte introuvable : {host}")
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise ValueError(f"adresse non publique refusée ({host})")
+
+
+def _fetch_page(url: str) -> str:
+    """GET contrôlé : schéma http(s) seul, hôte re-vérifié à chaque
+    redirection, contenu textuel uniquement, taille plafonnée."""
+    for _ in range(config.WEB_MAX_REDIRECTS + 1):
+        if not re.match(r"^https?://", url, re.I):
+            raise ValueError("seuls http:// et https:// sont acceptés")
+        _assert_public_host(url)
+
+        r = requests.get(url, timeout=config.HTTP_TIMEOUT, stream=True,
+                         allow_redirects=False,
+                         headers={"User-Agent": "MeshBridge/1.0"})
+        if r.is_redirect or r.is_permanent_redirect:
+            url = urljoin(url, r.headers.get("Location", ""))
+            continue
+        r.raise_for_status()
+
+        ctype = r.headers.get("Content-Type", "text/html")
+        if not any(t in ctype for t in ("text", "html", "xml", "json")):
+            raise ValueError(f"contenu non textuel ({ctype.split(';')[0]})")
+
+        chunks, size = [], 0
+        for chunk in r.iter_content(chunk_size=8192):
+            chunks.append(chunk)
+            size += len(chunk)
+            if size >= config.WEB_MAX_BYTES:   # on résume le début, inutile de tout charger
+                break
+        return b"".join(chunks).decode(r.encoding or "utf-8", errors="ignore")
+
+    raise ValueError("trop de redirections")
+
+
 def cmd_web(arg: str, mode: str) -> Reply:
     url = arg.strip()
     if not url:
         return Reply("Usage: /web <url>")
-    if not url.startswith("http"):
+    if not re.match(r"^https?://", url, re.I):
         url = "https://" + url
-    r = requests.get(url, timeout=config.HTTP_TIMEOUT,
-                     headers={"User-Agent": "MeshBridge/1.0"})
-    r.raise_for_status()
-    html = re.sub(r"<script.*?</script>", " ", r.text, flags=re.S | re.I)
+    try:
+        page = _fetch_page(url)
+    except ValueError as e:
+        return Reply(f"⚠️ {e}")
+    html = re.sub(r"<script.*?</script>", " ", page, flags=re.S | re.I)
     html = re.sub(r"<style.*?</style>", " ", html, flags=re.S | re.I)
     html = re.sub(r"<[^>]+>", " ", html)
     text, source = compress(" ".join(html.split()),
@@ -81,11 +132,17 @@ def cmd_web(arg: str, mode: str) -> Reply:
     return Reply(text, source)
 
 
+# strftime("%B") dépend de la locale système (anglais par défaut sur un Pi)
+_MOIS_FR = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+            "août", "septembre", "octobre", "novembre", "décembre")
+
+
 def cmd_ask(arg: str, mode: str) -> Reply:
     q = arg.strip()
     if not q:
         return Reply("Usage: /ask <question>")
-    date = datetime.datetime.now().strftime("%d %B %Y")
+    now = datetime.datetime.now()
+    date = f"{now.day} {_MOIS_FR[now.month - 1]} {now.year}"
     text, source = compress(
         q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.",
         mode)
@@ -98,7 +155,7 @@ def cmd_help(arg: str, mode: str) -> Reply:
 
 # ---------------------------------------------------------------- registre
 COMMANDS: dict[str, Command] = {
-    "meteo": Command(cmd_meteo, "/meteo <ville>"),
+    "meteo": Command(cmd_meteo, "/meteo <ville>", slow=True),   # appel réseau (wttr.in)
     "news":  Command(cmd_news,  "/news",          slow=True),
     "web":   Command(cmd_web,   "/web <url>",     slow=True),
     "ask":   Command(cmd_ask,   "/ask <question>", slow=True),

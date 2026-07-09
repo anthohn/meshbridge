@@ -19,11 +19,14 @@ def _summarize_cloud(content: str, instruction: str) -> str | None:
     if not config.GEMINI_KEY:
         return None
     try:
-        client = genai.Client(api_key=config.GEMINI_KEY)
+        client = genai.Client(api_key=config.GEMINI_KEY,
+                              http_options={"timeout": config.GEMINI_TIMEOUT_S * 1000})
         prompt = _PROMPT.format(instruction=instruction, content=content[:6000])
         resp = client.models.generate_content(model=config.GEMINI_MODEL,
                                                contents=prompt)
-        return resp.text.strip()
+        # resp.text peut être None (réponse bloquée par les filtres de sécurité)
+        text = (resp.text or "").strip()
+        return text or None
     except Exception as e:
         log.warning(f"cloud (Gemini) indisponible : {e}")
         return None
@@ -42,7 +45,9 @@ def _summarize_local(content: str, instruction: str) -> str | None:
             timeout=60,
         )
         r.raise_for_status()
-        return r.json()["response"].strip()
+        # Un petit modèle peut renvoyer une chaîne vide → traité comme un échec
+        text = r.json().get("response", "").strip()
+        return text or None
     except Exception as e:
         log.warning(f"local (Ollama) indisponible : {e}")
         return None
@@ -57,11 +62,11 @@ def compress(content: str, instruction: str, mode: str = "auto") -> tuple[str, s
     """
     if mode != "local":
         out = _summarize_cloud(content, instruction)
-        if out is not None:
+        if out:                     # None (échec) ou "" (vide) → on continue
             return out, "cloud"
     if mode != "cloud":
         out = _summarize_local(content, instruction)
-        if out is not None:
+        if out:
             return out, "local"
     log.warning("aucune IA disponible → fallback brut")
     return content, "raw"
