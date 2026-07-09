@@ -5,6 +5,7 @@ Chaque commande est préfixée par "/". Les handlers renvoient un Reply
 mise en forme finale garantie < MAX_LEN octets.
 """
 import re
+import time
 import socket
 import logging
 import datetime
@@ -16,6 +17,7 @@ from urllib.parse import urlparse, urljoin
 import requests
 
 import config
+import metrics
 from ai import compress
 from formatting import trim, tag
 
@@ -26,6 +28,8 @@ log = logging.getLogger("meshbridge.cmd")
 class Reply:
     text: str
     source: str | None = None      # "cloud" / "local" / "raw" / None
+    in_len: int = 0                # taille du contenu AVANT compression IA
+                                   # (0 si pas d'IA) → taux de compression
 
 
 @dataclass
@@ -60,10 +64,11 @@ def cmd_news(arg: str, mode: str) -> Reply:
             timeout=config.HTTP_TIMEOUT,
         ).json()
         titres.append(item.get("title", ""))
-    text, source = compress(" | ".join(titres),
+    contenu = " | ".join(titres)
+    text, source = compress(contenu,
                             "Résume ces titres d'actualité en français, format [1]...[2]...[3].",
                             mode)
-    return Reply(text, source)
+    return Reply(text, source, in_len=len(contenu))
 
 
 def _assert_public_host(url: str) -> None:
@@ -126,10 +131,11 @@ def cmd_web(arg: str, mode: str) -> Reply:
     html = re.sub(r"<script.*?</script>", " ", page, flags=re.S | re.I)
     html = re.sub(r"<style.*?</style>", " ", html, flags=re.S | re.I)
     html = re.sub(r"<[^>]+>", " ", html)
-    text, source = compress(" ".join(html.split()),
+    contenu = " ".join(html.split())
+    text, source = compress(contenu,
                             f"Résume l'essentiel de cette page web ({url}).",
                             mode)
-    return Reply(text, source)
+    return Reply(text, source, in_len=len(contenu))
 
 
 # strftime("%B") dépend de la locale système (anglais par défaut sur un Pi)
@@ -146,7 +152,11 @@ def cmd_ask(arg: str, mode: str) -> Reply:
     text, source = compress(
         q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.",
         mode)
-    return Reply(text, source)
+    return Reply(text, source, in_len=len(q))
+
+
+def cmd_stats(arg: str, mode: str) -> Reply:
+    return Reply(metrics.summary())
 
 
 def cmd_help(arg: str, mode: str) -> Reply:
@@ -160,6 +170,7 @@ COMMANDS: dict[str, Command] = {
     "web":   Command(cmd_web,   "/web <url>",     slow=True),
     "ask":   Command(cmd_ask,   "/ask <question>", slow=True),
     "ping":  Command(cmd_ping,  "/ping"),
+    "stats": Command(cmd_stats, "/stats"),
     "help":  Command(cmd_help,  "/help"),
 }
 
@@ -189,8 +200,13 @@ def dispatch(verb: str, arg: str) -> str:
 
     try:
         log.info(f"exec /{verb} {arg!r} (ia={mode})")
+        t0 = time.time()
         reply = cmd.handler(arg, mode)
     except Exception as e:
         log.error(f"/{verb} erreur : {e}")
         return trim(f"⚠️ erreur sur /{verb}")
-    return trim(tag(reply.text, reply.source))
+
+    final = trim(tag(reply.text, reply.source))
+    metrics.record(verb, mode, reply.source, reply.in_len,
+                   len(final.encode("utf-8")), time.time() - t0)
+    return final

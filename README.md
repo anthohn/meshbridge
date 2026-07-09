@@ -33,6 +33,7 @@ meshbridge/
 │   ├── config.py              #   constantes + chargement du .env
 │   ├── ai.py                  #   compression IA en cascade (cloud → local → brut)
 │   ├── commands.py            #   registre des commandes /… + répartiteur
+│   ├── metrics.py             #   compteurs /stats + journal metrics.csv
 │   └── formatting.py          #   troncature LoRa + étiquette de source
 ├── scripts/
 │   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
@@ -134,7 +135,10 @@ Toutes les commandes commencent par `/`. Un message sans `/` est ignoré (le can
 | `/news` | Titres d'actualité résumés |
 | `/web <url>` | Résumé IA de n'importe quelle page |
 | `/ask <question>` | Réponse directe d'une IA |
+| `/stats` | État du relai : uptime, nb de requêtes, répartition cloud/local, latence moyenne |
 | `/help` | Liste des commandes |
+
+Chaque requête traitée est aussi journalisée dans `metrics.csv` (racine du repo, ignoré par Git) : horodatage, commande, mode, source IA, tailles avant/après compression, latence. De quoi mesurer le taux de compression réel et comparer Gemini/Ollama sur la durée.
 
 Les réponses IA se terminent par un suffixe indiquant leur source : `· via Gemini` (cloud) ou `· via Ollama` (local).
 
