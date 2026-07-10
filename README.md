@@ -220,14 +220,6 @@ Document rédigé par la communauté Meshtastic Suisse (MeshTrafficObserver, Haf
 
 ---
 
-## Roadmap
-
-- [x] **Niveau 1** — Relai intelligent (LoRa + compression IA cloud/local)
-- [ ] **Niveau 2** — Protocole custom, chiffrement E2E, app iOS native
-- [ ] **Niveau 3** — Routage anonyme, réseau multi-nœuds
-
----
-
 ## Sécurité
 
 Ce repo ne contient **aucun secret**. PSK du canal privé, clé API Gemini, MAC et PIN BLE sont fournis via `.env` (ignoré par Git) au moment de l'exécution. Seul `.env.example` — un modèle vide — est versionné.
