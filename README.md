@@ -11,16 +11,16 @@ Projet de diplôme — École Supérieure d'Informatique de Gestion, Suisse.
 ```
 iPhone (mode avion)
    │  Bluetooth
-Nimbus  (LilyGO, portable)
+Paul  (LilyGO, portable)
    │  LoRa 868 MHz — canal privé chiffré
-Aurora  (Heltec V3, fixe contre la fenêtre)
+Pierre  (Heltec V3, fixe contre la fenêtre)
    │  Bluetooth Low Energy
 Raspberry Pi  →  Internet
 ```
 
 Le téléphone n'a jamais de connexion télécom. Toutes les commandes transitent par radio LoRa jusqu'au Raspberry Pi, qui va chercher l'information sur le web et la renvoie **compressée par IA** pour tenir dans un paquet radio (~200 octets).
 
-Aurora est physiquement séparé du Pi (lien BLE) pour être placé à l'endroit radio-optimal (fenêtre, hauteur), sans être contraint par le trajet d'un câble USB.
+Pierre est physiquement séparé du Pi (lien BLE) pour être placé à l'endroit radio-optimal (fenêtre, hauteur), sans être contraint par le trajet d'un câble USB.
 
 ---
 
@@ -36,7 +36,7 @@ meshbridge/
 │   ├── metrics.py             #   compteurs /stats + journal metrics.csv
 │   └── formatting.py          #   troncature LoRa + étiquette de source
 ├── scripts/
-│   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
+│   ├── config_meshbridge.py   # Assistant de config des nœuds (détection USB, pas à pas)
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
 ├── tests/                     # Suite pytest (lancée en CI à chaque push)
 ├── deploy/
@@ -79,8 +79,8 @@ Compléter ensuite avec les valeurs réelles :
 ```
 MESHBRIDGE_PSK=cle-base64             # côté PC — à générer, voir ci-dessous
 GEMINI_API_KEY=cle-gemini             # côté Pi — optionnelle (sinon IA locale seule)
-AURORA_BLE_MAC=AA:BB:CC:DD:EE:FF      # côté Pi — obtenue à l'étape 2 de l'installation
-AURORA_BLE_PIN=123456                 # côté PC — PIN à 6 chiffres, choisi librement
+PIERRE_BLE_MAC=AA:BB:CC:DD:EE:FF      # côté Pi — obtenue à l'étape 2 de l'installation
+PIERRE_BLE_PIN=123456                 # côté PC — PIN à 6 chiffres, choisi librement
 ```
 
 ⚠️ **Le `.env` n'est pas synchronisé entre les machines** : en créer un sur chaque machine, avec les variables qui la concernent. Pour générer la clé PSK :
@@ -100,27 +100,23 @@ pip install meshtastic python-dotenv
 python3 scripts/config_meshbridge.py
 ```
 
-Le script agit toujours sur **le nœud branché en USB**. Marche à suivre :
+Le script est un **assistant** : il détecte le nœud branché en USB et guide pas à pas — il refuse de continuer si deux nœuds sont branchés en même temps, demande le rôle du nœud s'il est vierge (Pierre fixe / Paul portable), déploie puis vérifie la configuration (7/7 attendu), et propose d'activer le BLE juste après Pierre. Un nœud déjà configuré est simplement vérifié. Suivre les instructions à l'écran pour traiter les deux nœuds l'un après l'autre.
 
-1. Brancher **Aurora** (Heltec) → option **1** du menu : déployer + vérifier → 7/7 attendu
-2. Aurora toujours branché → option **4** : activer le BLE — lit `AURORA_BLE_PIN` du `.env`
-3. Débrancher Aurora, brancher **Nimbus** (LilyGO) → option **2** : déployer + vérifier → 7/7 attendu
+### 2. Appairage BLE Pi ↔ Pierre (une seule fois)
 
-### 2. Appairage BLE Pi ↔ Aurora (une seule fois)
-
-Débrancher Aurora du PC et l'alimenter à sa position définitive (fenêtre). Puis, sur le Pi :
+Débrancher Pierre du PC et l'alimenter à sa position définitive (fenêtre). Puis, sur le Pi :
 
 ```bash
 bluetoothctl
 > scan on
-# attendre une ligne "Meshtastic_XXXX" : elle affiche l'adresse MAC d'Aurora
+# attendre une ligne "Meshtastic_XXXX" : elle affiche l'adresse MAC de Pierre
 > pair AA:BB:CC:DD:EE:FF   # remplacer par cette MAC
-# → saisir le PIN (AURORA_BLE_PIN du .env, activé à l'étape 1)
+# → saisir le PIN (PIERRE_BLE_PIN du .env, activé par l'assistant à l'étape 1)
 > trust AA:BB:CC:DD:EE:FF
 > exit
 ```
 
-Reporter cette MAC dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
+Reporter cette MAC dans le `.env` du Pi (`PIERRE_BLE_MAC=...`).
 
 ### 3. Installation du bridge (Pi)
 
@@ -139,7 +135,7 @@ Premier lancement à la main, pour vérifier que tout fonctionne :
 .venv/bin/python3 src/bridge.py
 ```
 
-Le message `[BLE] connecté. Nœud local : xxxxxx` doit apparaître. Si le lien BLE décroche (interférences WiFi, distance, reboot d'Aurora), le bridge se reconnecte automatiquement avec un délai croissant (5s → 60s max).
+Le message `[BLE] connecté. Nœud local : xxxxxx` doit apparaître. Si le lien BLE décroche (interférences WiFi, distance, reboot de Pierre), le bridge se reconnecte automatiquement avec un délai croissant (5s → 60s max).
 
 > 💡 Sur un Pi, le WiFi 2,4 GHz et le Bluetooth partagent la même antenne. Si le routeur propose du 5 GHz, y connecter le Pi réduit nettement les décrochages BLE.
 
@@ -170,7 +166,7 @@ sudo systemctl enable --now ollama   # sinon, l'activer
 
 ### 5. Côté iPhone
 
-Installer l'app [Meshtastic](https://meshtastic.org/docs/software/apple/) (App Store), activer le Bluetooth et se connecter à **Nimbus** depuis l'app. Le canal `MeshBridge` (configuré à l'étape 1) apparaît dans la liste des canaux : ouvrir sa conversation et envoyer `/ping` — le relai doit répondre `pong ✅ relai actif`. Le mode avion peut ensuite être activé : seul le Bluetooth vers Nimbus est nécessaire.
+Installer l'app [Meshtastic](https://meshtastic.org/docs/software/apple/) (App Store), activer le Bluetooth et se connecter à **Paul** depuis l'app. Le canal `MeshBridge` (configuré à l'étape 1) apparaît dans la liste des canaux : ouvrir sa conversation et envoyer `/ping` — le relai doit répondre `pong ✅ relai actif`. Le mode avion peut ensuite être activé : seul le Bluetooth vers Paul est nécessaire.
 
 ---
 

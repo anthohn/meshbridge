@@ -2,7 +2,7 @@
 """
 MeshBridge — Point d'entrée (Raspberry Pi), interface BLE.
 ==========================================================
-Aurora (Heltec) est placé contre la fenêtre pour maximiser la portée LoRa,
+Pierre (Heltec) est placé contre la fenêtre pour maximiser la portée LoRa,
 et parle au Pi en Bluetooth Low Energy — pas d'USB à tirer.
 
 Architecture :
@@ -127,10 +127,10 @@ def on_connection_lost(interface, topic=pub.AUTO_TOPIC) -> None:
 
 
 def open_ble() -> meshtastic.ble_interface.BLEInterface | None:
-    """Tente une seule fois d'ouvrir la liaison BLE avec Aurora."""
+    """Tente une seule fois d'ouvrir la liaison BLE avec Pierre."""
     try:
-        log.info(f"[BLE] connexion à Aurora ({config.AURORA_BLE_MAC})…")
-        iface = meshtastic.ble_interface.BLEInterface(config.AURORA_BLE_MAC)
+        log.info(f"[BLE] connexion à Pierre ({config.PIERRE_BLE_MAC})…")
+        iface = meshtastic.ble_interface.BLEInterface(config.PIERRE_BLE_MAC)
         log.info(f"[BLE] connecté. Nœud local : {iface.myInfo.my_node_num}")
         return iface
     except Exception as e:
@@ -141,8 +141,8 @@ def open_ble() -> meshtastic.ble_interface.BLEInterface | None:
 def main() -> None:
     log.info("═══ MeshBridge — relai off-grid LoRa + IA (BLE) ═══")
 
-    if not config.AURORA_BLE_MAC:
-        log.error("AURORA_BLE_MAC absent du .env — impossible de démarrer.")
+    if not config.PIERRE_BLE_MAC:
+        log.error("PIERRE_BLE_MAC absent du .env — impossible de démarrer.")
         return
 
     log.info(f"IA cloud : {'Gemini ✓' if config.GEMINI_KEY else 'Gemini ✗ (local seul)'}"

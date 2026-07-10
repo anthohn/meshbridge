@@ -39,12 +39,12 @@ GEMINI_MODEL     = "gemini-3.5-flash"
 GEMINI_TIMEOUT_S = 30             # sans timeout, une API qui pend gèle le worker
 
 # --- Interface radio : BLE uniquement ---
-# Aurora est physiquement séparé du Pi (contre la fenêtre, mieux placé
-# côté LoRa). Le lien Pi ↔ Aurora se fait par Bluetooth Low Energy.
-AURORA_BLE_MAC = os.environ.get("AURORA_BLE_MAC", "")
+# Pierre est physiquement séparé du Pi (contre la fenêtre, mieux placé
+# côté LoRa). Le lien Pi ↔ Pierre se fait par Bluetooth Low Energy.
+PIERRE_BLE_MAC = os.environ.get("PIERRE_BLE_MAC", "")
 
 # Reconnexion automatique : le BLE peut décrocher (interférences WiFi
-# 2.4 GHz, distance, Aurora qui reboot). Le bridge relance l'interface
+# 2.4 GHz, distance, Pierre qui reboot). Le bridge relance l'interface
 # après chaque déconnexion, avec un délai qui augmente pour ne pas
 # saturer le bus Bluetooth en cas d'échec répété.
 BLE_RECONNECT_MIN_S = 5      # premier délai de retry
