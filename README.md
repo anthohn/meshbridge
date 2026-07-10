@@ -66,7 +66,7 @@ Un seul fichier `.env` à la racine, jamais committé, lu automatiquement par le
 cp .env.example .env
 ```
 
-Remplis-le avec tes vraies valeurs :
+Compléter ensuite avec les valeurs réelles :
 
 ```
 MESHBRIDGE_PSK=ta-cle-base64          # côté PC (config des nœuds)
@@ -75,7 +75,7 @@ AURORA_BLE_MAC=AA:BB:CC:DD:EE:FF      # côté Pi (adresse BLE d'Aurora)
 AURORA_BLE_PIN=123456                 # côté PC (activation BLE d'Aurora)
 ```
 
-⚠️ **Copie ce `.env` sur chaque machine séparément** (PC pour la config des nœuds, Raspberry Pi pour le bridge). Ce n'est pas un fichier synchronisé — chaque machine a besoin des variables qui la concernent. Génère une clé PSK si tu n'en as pas :
+⚠️ **Le `.env` doit être copié sur chaque machine séparément** (PC pour la configuration des nœuds, Raspberry Pi pour le bridge). Ce n'est pas un fichier synchronisé — chaque machine a besoin des variables qui la concernent. Pour générer une clé PSK :
 
 ```bash
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
@@ -100,19 +100,19 @@ Options du menu, dans l'ordre :
 
 ### 2. Appairage BLE Pi ↔ Aurora (une seule fois)
 
-Débranche Aurora du PC, alimente-le à sa position définitive (fenêtre). Puis sur le Pi :
+Débrancher Aurora du PC et l'alimenter à sa position définitive (fenêtre). Puis, sur le Pi :
 
 ```bash
 bluetoothctl
 > scan on
-# attends de voir "Meshtastic_XXXX"
-> pair AA:BB:CC:DD:EE:FF   # remplace par la MAC réelle
-# → saisis le PIN défini plus haut
+# attendre l'apparition de "Meshtastic_XXXX"
+> pair AA:BB:CC:DD:EE:FF   # remplacer par la MAC réelle
+# → saisir le PIN défini plus haut
 > trust AA:BB:CC:DD:EE:FF
 > exit
 ```
 
-Note la MAC affichée et mets-la dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
+Noter la MAC affichée et la reporter dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
 
 ### 3. Installation du bridge (Pi)
 
@@ -131,13 +131,13 @@ Premier lancement à la main, pour vérifier que tout fonctionne :
 .venv/bin/python3 src/bridge.py
 ```
 
-Tu dois voir `[BLE] connecté. Nœud local : xxxxxx`. Si le lien BLE décroche (interférences WiFi, distance, reboot d'Aurora), le bridge se reconnecte automatiquement avec un délai croissant (5s → 60s max).
+Le message `[BLE] connecté. Nœud local : xxxxxx` doit apparaître. Si le lien BLE décroche (interférences WiFi, distance, reboot d'Aurora), le bridge se reconnecte automatiquement avec un délai croissant (5s → 60s max).
 
-> 💡 Sur un Pi, le WiFi 2,4 GHz et le Bluetooth partagent la même antenne. Si ta box propose du 5 GHz, connecter le Pi dessus réduit nettement les décrochages BLE.
+> 💡 Sur un Pi, le WiFi 2,4 GHz et le Bluetooth partagent la même antenne. Si le routeur propose du 5 GHz, y connecter le Pi réduit nettement les décrochages BLE.
 
 ### 4. Démarrage automatique (service systemd)
 
-Une fois le lancement manuel validé (Ctrl-C pour l'arrêter), installe le bridge comme service système — il démarrera au boot et se relancera tout seul en cas de crash :
+Une fois le lancement manuel validé (Ctrl-C pour l'arrêter), installer le bridge comme service système : il démarrera au boot et sera relancé automatiquement en cas de crash.
 
 ```bash
 sudo cp deploy/meshbridge.service /etc/systemd/system/
@@ -145,7 +145,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now meshbridge
 ```
 
-> ⚠️ Le fichier service contient l'utilisateur (`antho`) et le chemin du repo (`/home/antho/meshbridge`) en dur — adapte-les si ton installation diffère.
+> ⚠️ Le fichier service contient l'utilisateur (`antho`) et le chemin du repo (`/home/antho/meshbridge`) en dur — à adapter si l'installation diffère.
 
 Commandes utiles :
 
@@ -155,11 +155,11 @@ journalctl -u meshbridge -f      # logs en direct
 sudo systemctl restart meshbridge
 ```
 
-Vérifie aussi qu'Ollama est lui-même un service (c'est le cas s'il a été installé via le script officiel) :
+Vérifier également qu'Ollama est lui-même un service (c'est le cas s'il a été installé via le script officiel) :
 
 ```bash
 systemctl status ollama          # doit afficher "active (running)"
-sudo systemctl enable --now ollama   # sinon, active-le
+sudo systemctl enable --now ollama   # sinon, l'activer
 ```
 
 ---
