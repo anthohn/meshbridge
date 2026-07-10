@@ -23,7 +23,7 @@ import meshtastic.ble_interface
 from pubsub import pub
 
 import config
-from commands import dispatch, SLOW
+from commands import dispatch, SLOW, COMMANDS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -171,7 +171,8 @@ def main() -> None:
             _iface["handle"] = iface
             _connection_lost.clear()
             delay = config.BLE_RECONNECT_MIN_S
-            log.info("Prêt. Commandes : /meteo /news /web /ask /ping /help")
+            # Liste générée depuis le registre : toujours à jour
+            log.info("Prêt. Commandes : " + " ".join("/" + n for n in COMMANDS))
 
             # On dort jusqu'à ce qu'une déconnexion soit signalée
             _connection_lost.wait()

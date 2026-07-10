@@ -39,6 +39,8 @@ meshbridge/
 │   ├── config_meshbridge.py   # Déploie + vérifie la config des 2 nœuds (Python)
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
 ├── tests/                     # Suite pytest (lancée en CI à chaque push)
+├── deploy/
+│   └── meshbridge.service     # Unit systemd : démarrage au boot + relance auto
 ├── .env.example
 ├── requirements.txt
 └── .gitignore
@@ -112,16 +114,53 @@ bluetoothctl
 
 Note la MAC affichée et mets-la dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
 
-### 3. Lancement du bridge (Pi)
+### 3. Installation du bridge (Pi)
+
+Dans un environnement virtuel, pour ne pas toucher au Python du système :
 
 ```bash
-pip install -r requirements.txt --break-system-packages
+cd ~/meshbridge
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ollama pull llama3.2:1b
+```
 
-python3 src/bridge.py
+Premier lancement à la main, pour vérifier que tout fonctionne :
+
+```bash
+.venv/bin/python3 src/bridge.py
 ```
 
 Tu dois voir `[BLE] connecté. Nœud local : xxxxxx`. Si le lien BLE décroche (interférences WiFi, distance, reboot d'Aurora), le bridge se reconnecte automatiquement avec un délai croissant (5s → 60s max).
+
+> 💡 Sur un Pi, le WiFi 2,4 GHz et le Bluetooth partagent la même antenne. Si ta box propose du 5 GHz, connecter le Pi dessus réduit nettement les décrochages BLE.
+
+### 4. Démarrage automatique (service systemd)
+
+Une fois le lancement manuel validé (Ctrl-C pour l'arrêter), installe le bridge comme service système — il démarrera au boot et se relancera tout seul en cas de crash :
+
+```bash
+sudo cp deploy/meshbridge.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now meshbridge
+```
+
+> ⚠️ Le fichier service contient l'utilisateur (`antho`) et le chemin du repo (`/home/antho/meshbridge`) en dur — adapte-les si ton installation diffère.
+
+Commandes utiles :
+
+```bash
+systemctl status meshbridge      # état du service
+journalctl -u meshbridge -f      # logs en direct
+sudo systemctl restart meshbridge
+```
+
+Vérifie aussi qu'Ollama est lui-même un service (c'est le cas s'il a été installé via le script officiel) :
+
+```bash
+systemctl status ollama          # doit afficher "active (running)"
+sudo systemctl enable --now ollama   # sinon, active-le
+```
 
 ---
 
@@ -141,7 +180,7 @@ Toutes les commandes commencent par `/`. Un message sans `/` est ignoré (le can
 
 Chaque requête traitée est aussi journalisée dans `metrics.csv` (racine du repo, ignoré par Git) : horodatage, commande, mode, source IA, tailles avant/après compression, latence. De quoi mesurer le taux de compression réel et comparer Gemini/Ollama sur la durée.
 
-Les réponses IA se terminent par un suffixe indiquant leur source : `· via Gemini` (cloud) ou `· via Ollama` (local).
+Les réponses sont préfixées d'un emoji indiquant leur source : `⚡` Gemini (cloud), `🏠` Ollama (local), `✂️` texte brut tronqué (aucune IA disponible).
 
 **Choix de l'IA par requête** — surcharge ponctuelle avec `!local` ou `!cloud` en fin de commande. Pratique pour comparer qualité et vitesse des deux backends :
 
