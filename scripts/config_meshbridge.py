@@ -16,6 +16,7 @@ import subprocess
 import re
 import shutil
 import time
+import hashlib
 from dotenv import load_dotenv
 
 # ======================================================================
@@ -250,11 +251,20 @@ def set_role_settings(node_type):
         pos_secs = "21600"
         fixed = "false"
 
+    # Position d'abord : le changement de rôle (ci-dessous) fait rebooter
+    # le nœud, ce qui perdait les écritures envoyées après lui dans le
+    # même lot (vu en conditions réelles : 6/7, position non appliquée).
+    write_step("Écriture des réglages de position...")
     invoke_meshtastic([
-        "--set", "device.role", "CLIENT_MUTE",
-        "--set", "device.rebroadcast_mode", "LOCAL_ONLY",
         "--set", "position.position_broadcast_secs", pos_secs,
         "--set", "position.fixed_position", fixed
+    ])
+    time.sleep(3)
+
+    write_step("Écriture du rôle (peut faire rebooter le nœud)...")
+    invoke_meshtastic([
+        "--set", "device.role", "CLIENT_MUTE",
+        "--set", "device.rebroadcast_mode", "LOCAL_ONLY"
     ])
     time.sleep(3)
 
@@ -299,13 +309,19 @@ def test_deployment(node_type):
         print(f"  \033[91m❌ {passed}/{total} réussies — {total - passed} à corriger ci-dessus.\033[0m")
         return False
 
-def show_channel_url():
-    write_title("URL des canaux (doit être IDENTIQUE sur les deux nœuds)")
-    print("\033[90m  Comparer cette ligne entre Pierre et Paul : PSK partagé = OK\033[0m")
+def show_channel_fingerprint():
+    """Affiche une empreinte du canal, PAS l'URL complète : celle-ci
+    contient le PSK en clair (danger dans un screenshot ou un rapport)."""
+    write_title("Empreinte du canal (doit être IDENTIQUE sur les deux nœuds)")
     info = invoke_meshtastic(["--info"])
     for line in info.splitlines():
         if "Complete URL" in line:
-            print(line)
+            match = re.search(r"https://\S+", line)
+            if match:
+                empreinte = hashlib.sha256(match.group(0).encode()).hexdigest()[:12]
+                print(f"  Empreinte : \033[97m{empreinte}\033[0m")
+                return
+    write_fail("URL de canal introuvable dans --info")
 
 # ======================================================================
 #  DÉPLOIEMENT COMPLET D'UN NŒUD
@@ -322,7 +338,7 @@ def deploy_node(node_type):
         set_private_channel()
 
         ok = test_deployment(node_type)
-        show_channel_url()
+        show_channel_fingerprint()
 
         print("")
         if ok:
@@ -376,25 +392,33 @@ def assist_node():
     write_step("Lecture de l'identité du nœud…")
     owner = get_owner()
 
-    # Nœud déjà configuré → vérifier d'abord, re-déployer seulement si besoin.
+    # Nœud déjà configuré → confirmer le rôle, vérifier, re-déployer si besoin.
     # Noms tirés de CONFIG : un renommage n'a qu'un seul endroit à modifier.
     known = {node["Long"]: t for t, node in CONFIG["Nodes"].items()}
+    node_type = None
+    ok = False
+
     if owner in known:
-        node_type = known[owner]
-        write_ok(f"Nœud reconnu : {owner} ({'fixe' if node_type == 'Maison' else 'portable'})")
-        ok = test_deployment(node_type)
-        if not ok and ask_yes_no("\nRe-déployer la configuration complète ?"):
-            ok = deploy_node(node_type)
-        elif ok:
-            show_channel_url()
-    else:
-        # Nœud vierge (ou nom inconnu) → choisir son rôle
+        role = known[owner]
+        write_ok(f"Nœud reconnu : {owner} ({'fixe' if role == 'Maison' else 'portable'})")
+        # Filet de sécurité : un nœud a pu recevoir le mauvais rôle
+        if ask_yes_no("Conserver ce rôle ?"):
+            node_type = role
+            ok = test_deployment(node_type)
+            if not ok and ask_yes_no("\nRe-déployer la configuration complète ?"):
+                ok = deploy_node(node_type)
+            elif ok:
+                show_channel_fingerprint()
+
+    if node_type is None:
+        # Nœud vierge, nom inconnu, ou rôle refusé → choisir son rôle
         maison = CONFIG["Nodes"]["Maison"]["Long"]
         portable = CONFIG["Nodes"]["Portable"]["Long"]
-        print(f"\n  Nœud non configuré détecté (nom actuel : {owner or 'inconnu'}).")
+        if owner not in known:
+            print(f"\n  Nœud non configuré détecté (nom actuel : {owner or 'inconnu'}).")
         print("  Quel rôle lui attribuer ?")
-        print(f"    1. {maison}  — fixe, contre la fenêtre, relié au Pi (Heltec)")
-        print(f"    2. {portable}  — portable, dans le sac (LilyGO)")
+        print(f"    1. {maison}  — fixe, relié au Raspberry Pi (passerelle Internet)")
+        print(f"    2. {portable}  — portable, accompagne le téléphone")
         while True:
             choix = input("  Choix (1/2) : ").strip()
             if choix in ("1", "2"):
