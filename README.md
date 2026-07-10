@@ -61,7 +61,14 @@ meshbridge/
 
 ## Configuration des secrets (.env)
 
-Un seul fichier `.env` à la racine, jamais committé, lu automatiquement par les deux scripts.
+Cloner d'abord le projet **sur chaque machine** — le PC (configuration des nœuds) et le Raspberry Pi (bridge) :
+
+```bash
+git clone https://github.com/anthohn/meshbridge.git
+cd meshbridge
+```
+
+Puis créer le fichier de secrets à la racine (jamais committé, lu automatiquement par le script de configuration et par le bridge) :
 
 ```bash
 cp .env.example .env
@@ -70,13 +77,13 @@ cp .env.example .env
 Compléter ensuite avec les valeurs réelles :
 
 ```
-MESHBRIDGE_PSK=ta-cle-base64          # côté PC (config des nœuds)
-GEMINI_API_KEY=ta-cle-gemini          # côté Pi (bridge.py)
-AURORA_BLE_MAC=AA:BB:CC:DD:EE:FF      # côté Pi (adresse BLE d'Aurora)
-AURORA_BLE_PIN=123456                 # côté PC (activation BLE d'Aurora)
+MESHBRIDGE_PSK=cle-base64             # côté PC — à générer, voir ci-dessous
+GEMINI_API_KEY=cle-gemini             # côté Pi — optionnelle (sinon IA locale seule)
+AURORA_BLE_MAC=AA:BB:CC:DD:EE:FF      # côté Pi — obtenue à l'étape 2 de l'installation
+AURORA_BLE_PIN=123456                 # côté PC — PIN à 6 chiffres, choisi librement
 ```
 
-⚠️ **Le `.env` doit être copié sur chaque machine séparément** (PC pour la configuration des nœuds, Raspberry Pi pour le bridge). Ce n'est pas un fichier synchronisé — chaque machine a besoin des variables qui la concernent. Pour générer une clé PSK :
+⚠️ **Le `.env` n'est pas synchronisé entre les machines** : en créer un sur chaque machine, avec les variables qui la concernent. Pour générer la clé PSK :
 
 ```bash
 python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
@@ -86,18 +93,18 @@ python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 
 ## Installation
 
-### 1. Configuration initiale des nœuds (PC, Aurora branché en USB)
+### 1. Configuration initiale des nœuds (PC, un nœud à la fois en USB)
 
 ```bash
 pip install meshtastic python-dotenv
 python3 scripts/config_meshbridge.py
 ```
 
-Options du menu, dans l'ordre :
+Le script agit toujours sur **le nœud branché en USB**. Marche à suivre :
 
-1. **Déployer + vérifier** Aurora (Heltec, maison) → 7/7 attendu
-2. **Déployer + vérifier** Nimbus (LilyGO, portable) → 7/7 attendu
-3. **Activer le BLE sur Aurora** (option 4 du menu) — lit `AURORA_BLE_PIN` du `.env`
+1. Brancher **Aurora** (Heltec) → option **1** du menu : déployer + vérifier → 7/7 attendu
+2. Aurora toujours branché → option **4** : activer le BLE — lit `AURORA_BLE_PIN` du `.env`
+3. Débrancher Aurora, brancher **Nimbus** (LilyGO) → option **2** : déployer + vérifier → 7/7 attendu
 
 ### 2. Appairage BLE Pi ↔ Aurora (une seule fois)
 
@@ -106,14 +113,14 @@ Débrancher Aurora du PC et l'alimenter à sa position définitive (fenêtre). P
 ```bash
 bluetoothctl
 > scan on
-# attendre l'apparition de "Meshtastic_XXXX"
-> pair AA:BB:CC:DD:EE:FF   # remplacer par la MAC réelle
-# → saisir le PIN défini plus haut
+# attendre une ligne "Meshtastic_XXXX" : elle affiche l'adresse MAC d'Aurora
+> pair AA:BB:CC:DD:EE:FF   # remplacer par cette MAC
+# → saisir le PIN (AURORA_BLE_PIN du .env, activé à l'étape 1)
 > trust AA:BB:CC:DD:EE:FF
 > exit
 ```
 
-Noter la MAC affichée et la reporter dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
+Reporter cette MAC dans le `.env` du Pi (`AURORA_BLE_MAC=...`).
 
 ### 3. Installation du bridge (Pi)
 
@@ -161,6 +168,10 @@ systemctl status ollama          # doit afficher "active (running)"
 sudo systemctl enable --now ollama   # sinon, l'activer
 ```
 
+### 5. Côté iPhone
+
+Installer l'app [Meshtastic](https://meshtastic.org/docs/software/apple/) (App Store), activer le Bluetooth et se connecter à **Nimbus** depuis l'app. Le canal `MeshBridge` (configuré à l'étape 1) apparaît dans la liste des canaux : ouvrir sa conversation et envoyer `/ping` — le relai doit répondre `pong ✅ relai actif`. Le mode avion peut ensuite être activé : seul le Bluetooth vers Nimbus est nécessaire.
+
 ---
 
 ## Commandes disponibles (canal MeshBridge)
@@ -172,7 +183,7 @@ Toutes les commandes commencent par `/`. Un message sans `/` est ignoré (le can
 | `/ping` | Test de connectivité |
 | `/meteo <ville>` | Météo compacte (source directe API) |
 | `/news` | Titres d'actualité résumés |
-| `/web <url>` | Résumé IA de n'importe quelle page |
+| `/web <url>` | Résumé IA d'une page web publique |
 | `/ask <question>` | Réponse directe d'une IA |
 | `/stats` | État du relai : uptime, nb de requêtes, répartition cloud/local, latence moyenne |
 | `/help` | Liste des commandes |
@@ -195,7 +206,7 @@ Les réponses sont préfixées d'un emoji indiquant leur source : `⚡` Gemini (
 La logique du bridge (troncature LoRa, cascade IA, parsing des commandes, garde-fous de `/web`, métriques) est couverte par une suite pytest, sans réseau ni matériel requis :
 
 ```bash
-pip install pytest
+pip install pytest        # sur un Linux récent : pip install --user pytest
 pytest
 ```
 
