@@ -1,12 +1,9 @@
-# MeshBridge — service systemd pour le Raspberry Pi.
-# Installation :
-#   sudo cp deploy/meshbridge.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now meshbridge
+# MeshBridge — MODÈLE de service systemd pour le Raspberry Pi.
+# Ne pas copier tel quel : les marqueurs __USER__ et __REPO__ sont remplis
+# automatiquement par le script d'installation, qui détecte l'utilisateur
+# courant et l'emplacement du repo :
+#   python3 deploy/install.py
 # Logs en direct :  journalctl -u meshbridge -f
-#
-# Chemins écrits pour l'utilisateur « antho », repo dans /home/antho/meshbridge —
-# à adapter si l'installation change.
 
 [Unit]
 Description=MeshBridge — relai off-grid LoRa + IA
@@ -17,9 +14,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=antho
-WorkingDirectory=/home/antho/meshbridge
-ExecStart=/home/antho/meshbridge/.venv/bin/python3 src/bridge.py
+User=__USER__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/.venv/bin/python3 src/bridge.py
 # Logs visibles immédiatement dans journalctl (pas de mise en tampon Python)
 Environment=PYTHONUNBUFFERED=1
 # Crash ou sortie inattendue → relance après 10 s, indéfiniment

@@ -40,7 +40,8 @@ meshbridge/
 │   └── Config-MeshBridge.ps1  # Déploie + vérifie la config (PowerShell, déprécié)
 ├── tests/                     # Suite pytest (lancée en CI à chaque push)
 ├── deploy/
-│   └── meshbridge.service     # Unit systemd : démarrage au boot + relance auto
+│   ├── install.py             # Installe le service systemd (chemins auto-détectés)
+│   └── meshbridge.service     # Modèle d'unit : démarrage au boot + relance auto
 ├── .env.example
 ├── requirements.txt
 └── .gitignore
@@ -140,12 +141,10 @@ Le message `[BLE] connecté. Nœud local : xxxxxx` doit apparaître. Si le lien 
 Une fois le lancement manuel validé (Ctrl-C pour l'arrêter), installer le bridge comme service système : il démarrera au boot et sera relancé automatiquement en cas de crash.
 
 ```bash
-sudo cp deploy/meshbridge.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now meshbridge
+python3 deploy/install.py
 ```
 
-> ⚠️ Le fichier service contient l'utilisateur (`antho`) et le chemin du repo (`/home/antho/meshbridge`) en dur — à adapter si l'installation diffère.
+Le script détecte l'utilisateur courant et l'emplacement du repo, génère le fichier service à partir du modèle `deploy/meshbridge.service`, l'installe et le démarre (sudo est demandé au moment de l'écriture dans `/etc`). Il peut être relancé sans risque (mise à jour du service après un déplacement du repo, par exemple).
 
 Commandes utiles :
 
