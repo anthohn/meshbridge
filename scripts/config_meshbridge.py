@@ -7,7 +7,7 @@ Fonctionnement : le script détecte le nœud branché en USB et guide
 pas à pas. Un nœud vierge se voit attribuer un rôle (Pierre fixe /
 Paul portable) ; un nœud déjà nommé est vérifié en priorité.
 Chaque paramètre critique est relu après écriture et comparé à la
-valeur attendue — le succès n'est déclaré qu'à 7/7.
+valeur attendue — le succès n'est déclaré qu'à 8/8.
 """
 
 import os
@@ -16,6 +16,7 @@ import subprocess
 import re
 import shutil
 import time
+import getpass
 import hashlib
 from dotenv import load_dotenv
 
@@ -103,6 +104,13 @@ def invoke_meshtastic(args):
                 "timed out"
             ]
             if any(kw in output.lower() for kw in connection_keywords):
+                if attempt == 1:
+                    # Affiche la cause réelle dès le premier échec, sinon on
+                    # retente 30 s en aveugle (vécu : ModemManager, dialout…)
+                    kw_hit = next(kw for kw in connection_keywords if kw in output.lower())
+                    ligne = next((l.strip() for l in output.splitlines()
+                                  if kw_hit in l.lower()), kw_hit)
+                    print(f"  \033[90m(cause : {ligne[:90]})\033[0m")
                 if attempt < max_retries:
                     print(f"  \033[90m[!] Nœud hors-ligne (reboot ?). Nouvel essai dans {retry_delay}s... ({attempt}/{max_retries})\033[0m")
                     time.sleep(retry_delay)
@@ -160,30 +168,68 @@ def find_ports():
         sys.exit(1)
 
 def wait_for_single_node():
-    """Attend qu'exactement UN nœud soit branché en USB, puis le renvoie."""
+    """Attend qu'exactement UN nœud soit branché en USB, puis le renvoie.
+    Vérifie aussi le droit d'accès au port : sans lui, tout échouerait
+    plus loin avec des messages trompeurs."""
     while True:
         ports = find_ports()
         if len(ports) == 1:
-            write_ok(f"Nœud détecté sur {ports[0]}")
-            return ports[0]
+            port = ports[0]
+            if not os.access(port, os.R_OK | os.W_OK):
+                write_fail(f"Pas le droit d'accéder à {port}.")
+                user = getpass.getuser()
+                print(f"\033[93m  Ajouter l'utilisateur au groupe 'dialout', puis se déconnecter/reconnecter :\033[0m")
+                print(f"\033[93m    sudo usermod -a -G dialout {user}\033[0m")
+                print(f"\033[93m  Ou, pour essayer sans se déconnecter :\033[0m")
+                print(f"\033[93m    sg dialout -c \"python3 {sys.argv[0]}\"\033[0m")
+                sys.exit(1)
+            write_ok(f"Nœud détecté sur {port}")
+            return port
         if not ports:
             input("\n\033[93mAucun nœud détecté. Brancher un nœud en USB, puis Entrée pour re-scanner…\033[0m ")
         else:
             print(f"\n\033[93m{len(ports)} nœuds détectés ({', '.join(ports)}).\033[0m")
             input("\033[93mUn seul nœud peut être configuré à la fois. En débrancher un, puis Entrée…\033[0m ")
 
-def get_owner():
-    """Lit le nom (owner) du nœud branché. Renvoie None s'il est illisible."""
+def probe_node():
+    """Interroge le nœud une seule fois (20 s max) pour savoir s'il parle
+    Meshtastic. Renvoie (True, version, nom) s'il répond, (False, None, None)
+    sinon — sans chercher à deviner quel autre firmware tourne : un handshake
+    muet peut venir d'un firmware étranger (MeshCore) comme d'un boot en cours,
+    et le message d'aide couvre les deux cas."""
     try:
-        raw = invoke_meshtastic(["--info"])
-        for line in raw.splitlines():
-            match = re.match(r"^Owner\s*:\s*(.+)$", line.strip())
-            if match:
-                # "Pierre (AUR)" → "Pierre"
-                return re.sub(r"\s*\(.*\)$", "", match.group(1)).strip()
+        r = subprocess.run(["meshtastic", "--info"], capture_output=True,
+                           text=True, timeout=20)
+        out = r.stdout + r.stderr
+        if r.returncode == 0 and "Owner" in out:
+            version = None
+            m = re.search(r'firmware_?version[^0-9]*(\d+\.\d+\.\d+)', out, re.I)
+            if m:
+                version = m.group(1)
+            owner = None
+            m = re.search(r"^Owner\s*:\s*(.+)$", out, re.M)
+            if m:
+                owner = re.sub(r"\s*\(.*\)$", "", m.group(1)).strip()  # "Pierre (PIE)" → "Pierre"
+            return (True, version, owner)
+    except subprocess.TimeoutExpired:
+        pass
     except Exception as e:
-        write_fail(f"Lecture du nom impossible : {e}")
-    return None
+        write_fail(f"Sonde impossible : {e}")
+    return (False, None, None)
+
+
+def latest_stable_firmware():
+    """Dernière version stable Meshtastic (API GitHub). None si hors-ligne."""
+    try:
+        import json
+        import urllib.request
+        url = "https://api.github.com/repos/meshtastic/firmware/releases/latest"
+        with urllib.request.urlopen(url, timeout=5) as r:
+            tag = json.load(r).get("tag_name", "")
+        m = re.search(r"(\d+\.\d+\.\d+)", tag)
+        return m.group(1) if m else None
+    except Exception:
+        return None
 
 # ======================================================================
 #  PRÉREQUIS
@@ -213,8 +259,8 @@ def test_prerequisites():
 #  APPLICATION DE LA CONFIGURATION
 # ======================================================================
 
-def set_common_settings(long_name, short_name):
-    write_title(f"[1/3] Identité et paramètres communs ({long_name} / {short_name})")
+def set_common_settings(long_name, short_name, etape="[1/3]"):
+    write_title(f"{etape} Identité et paramètres communs ({long_name} / {short_name})")
 
     write_step("Écriture des informations propriétaires...")
     invoke_meshtastic(["--set-owner", long_name, "--set-owner-short", short_name])
@@ -269,7 +315,23 @@ def set_role_settings(node_type):
     time.sleep(3)
 
 def set_private_channel():
-    write_title(f"[3/3] Canal privé chiffré MeshBridge (index {CONFIG['Channel']})")
+    write_title("[3/3] Canaux : public (0, portée) + MeshBridge privé (1, chiffré)")
+
+    # Canal 0 = canal public suisse par défaut. INDISPENSABLE pour la portée :
+    # la fréquence LoRa dérive du nom du canal primary, donc être sur le public
+    # met les nœuds sur la même fréquence que le mesh suisse → les autres nœuds
+    # relaient notre trafic (rebonds). Un primary custom isolerait les nœuds.
+    write_step("Canal 0 remis au public suisse (fréquence du mesh, rebonds)...")
+    invoke_meshtastic([
+        "--ch-index", "0",
+        "--ch-set", "psk", "default",
+        "--ch-set", "name", ""
+    ])
+    time.sleep(3)
+
+    # Canal 1 = MeshBridge chiffré. Les relais publics transportent ces paquets
+    # sans pouvoir les lire (ils n'ont pas le PSK) : portée ET confidentialité.
+    write_step("Canal MeshBridge (secondaire, chiffré)...")
     invoke_meshtastic([
         "--ch-index", str(CONFIG["Channel"]),
         "--ch-set", "name", "MeshBridge",
@@ -283,19 +345,46 @@ def set_private_channel():
 #  VÉRIFICATION POST-DÉPLOIEMENT
 # ======================================================================
 
-def test_deployment(node_type):
-    write_title("Vérification (relecture réelle des champs)")
+def test_primary_channel():
+    """Vérifie que le canal 0 (primary) est bien le canal public par défaut.
+    La fréquence LoRa dérive du NOM du canal primary : un primary
+    personnalisé isole le nœud du mesh public — plus aucun rebond
+    (vécu : un canal « Höhn » résiduel rendait Paul sourd au mesh)."""
+    try:
+        info = invoke_meshtastic(["--info"])
+    except Exception as e:
+        write_fail(f"{'Canal 0':<22} = ERREUR (illisible : {e})")
+        return False
 
-    pos_expected = "86400" if node_type == "Maison" else "21600"
+    for line in info.splitlines():
+        if "Index 0: PRIMARY" in line:
+            m = re.search(r'"name":\s*"([^"]*)"', line)
+            nom = m.group(1) if m else ""
+            if nom == "" and "psk=secret" not in line:
+                write_ok(f"{'Canal 0':<22} = public (défaut)")
+                return True
+            write_fail(f"{'Canal 0':<22} = personnalisé « {nom or 'clé custom'} »  (attendu : public)")
+            return False
+
+    write_fail(f"{'Canal 0':<22} = introuvable dans --info")
+    return False
+
+
+def test_deployment(pos_expected, rebroadcast="LOCAL_ONLY", role="CLIENT_MUTE"):
+    """Relit les 8 champs critiques. `rebroadcast` : LOCAL_ONLY pour les
+    nœuds MeshBridge, ALL pour un nœud standard (défaut Netiquette).
+    `role` : CLIENT_MUTE partout, sauf nœud standard en zone peu couverte."""
+    write_title("Vérification (relecture réelle des champs)")
 
     results = [
         test_setting("lora.region", "EU_868", "Région"),
         test_setting("lora.modem_preset", "MEDIUM_FAST", "Preset LoRa"),
         test_setting("lora.hop_limit", "3", "Hop limit"),
-        test_setting("device.role", "CLIENT_MUTE", "Rôle"),
-        test_setting("device.rebroadcast_mode", "LOCAL_ONLY", "Rebroadcast"),
+        test_setting("device.role", role, "Rôle"),
+        test_setting("device.rebroadcast_mode", rebroadcast, "Rebroadcast"),
         test_setting("position.position_broadcast_smart_enabled", "False", "Smart position"),
-        test_setting("position.position_broadcast_secs", pos_expected, "Position interval")
+        test_setting("position.position_broadcast_secs", pos_expected, "Position interval"),
+        test_primary_channel()
     ]
 
     passed = sum(1 for r in results if r)
@@ -328,7 +417,7 @@ def show_channel_fingerprint():
 # ======================================================================
 
 def deploy_node(node_type):
-    """Déploie + vérifie un nœud. Renvoie True si conforme (7/7)."""
+    """Déploie + vérifie un nœud. Renvoie True si conforme (8/8)."""
     node = CONFIG["Nodes"][node_type]
     name = node["Long"]
 
@@ -337,7 +426,8 @@ def deploy_node(node_type):
         set_role_settings(node_type)
         set_private_channel()
 
-        ok = test_deployment(node_type)
+        pos = "86400" if node_type == "Maison" else "21600"
+        ok = test_deployment(pos)
         show_channel_fingerprint()
 
         print("")
@@ -345,6 +435,45 @@ def deploy_node(node_type):
             print(f"  \033[92m✅ Nœud '{name}' déployé ET vérifié.\033[0m")
         else:
             print(f"  \033[91m⚠ Nœud '{name}' déployé mais NON conforme — voir échecs.\033[0m")
+        return ok
+    except Exception as e:
+        print("")
+        write_fail(f"Déploiement interrompu : {e}")
+        return False
+
+def deploy_standard_node(long_name, short_name, mobile, role):
+    """Nœud hors MeshBridge : conforme Netiquette, sur le canal public
+    par défaut (pas de canal privé, pas de PSK).
+    Rôle selon la règle Netiquette : CLIENT_MUTE en zone dense ou pour
+    tout nœud transporté ; CLIENT en zone peu couverte, pour aider le
+    mesh. Rebroadcast ALL (défaut Netiquette — n'a d'effet qu'en CLIENT)."""
+    pos_secs = "21600" if mobile else "86400"
+    fixed = "false" if mobile else "true"
+
+    try:
+        set_common_settings(long_name, short_name, etape="[1/2]")
+
+        write_title(f"[2/2] Règles Netiquette ({'mobile / position 6h' if mobile else 'fixe / position 24h'}, rôle {role})")
+        write_step("Écriture des réglages de position...")
+        invoke_meshtastic([
+            "--set", "position.position_broadcast_secs", pos_secs,
+            "--set", "position.fixed_position", fixed
+        ])
+        time.sleep(3)
+
+        write_step("Écriture du rôle (peut faire rebooter le nœud)...")
+        invoke_meshtastic([
+            "--set", "device.role", role,
+            "--set", "device.rebroadcast_mode", "ALL"
+        ])
+        time.sleep(3)
+
+        ok = test_deployment(pos_secs, rebroadcast="ALL", role=role)
+        print("")
+        if ok:
+            print(f"  \033[92m✅ Nœud standard '{long_name}' déployé ET vérifié (Netiquette).\033[0m")
+        else:
+            print(f"  \033[91m⚠ Nœud standard '{long_name}' déployé mais NON conforme — voir échecs.\033[0m")
         return ok
     except Exception as e:
         print("")
@@ -389,8 +518,27 @@ def assist_node():
     """Prend en charge le nœud actuellement branché, de bout en bout."""
     wait_for_single_node()
 
-    write_step("Lecture de l'identité du nœud…")
-    owner = get_owner()
+    write_step("Identification du firmware…")
+    est_meshtastic, version, owner = probe_node()
+
+    if not est_meshtastic:
+        write_fail("Le nœud n'a pas répondu au protocole Meshtastic.")
+        print("\033[93m  Deux causes possibles :\033[0m")
+        print("\033[93m  • Le nœud démarrait encore → réessayer dans quelques secondes.\033[0m")
+        print("\033[93m  • Un autre firmware tourne (p. ex. MeshCore, livré sur certains\033[0m")
+        print("\033[93m    appareils Seeed) → le passer sous Meshtastic via :\033[0m")
+        print("\033[93m       https://flasher.meshtastic.org\033[0m")
+        print("\033[93m       (nRF52 : double-clic sur reset → glisser le .uf2 sur le disque USB)\033[0m")
+        return
+
+    write_ok(f"Firmware Meshtastic {version or '(version illisible)'} détecté")
+    derniere = latest_stable_firmware()
+    if version and derniere:
+        if tuple(map(int, version.split("."))) < tuple(map(int, derniere.split("."))):
+            print(f"  \033[93m[i] Version {version} < dernière stable {derniere} — mise à jour conseillée")
+            print(f"      via https://flasher.meshtastic.org (la Netiquette recommande de rester à jour)\033[0m")
+        else:
+            write_ok(f"Firmware à jour (dernière stable : {derniere})")
 
     # Nœud déjà configuré → confirmer le rôle, vérifier, re-déployer si besoin.
     # Noms tirés de CONFIG : un renommage n'a qu'un seul endroit à modifier.
@@ -404,7 +552,8 @@ def assist_node():
         # Filet de sécurité : un nœud a pu recevoir le mauvais rôle
         if ask_yes_no("Conserver ce rôle ?"):
             node_type = role
-            ok = test_deployment(node_type)
+            pos = "86400" if node_type == "Maison" else "21600"
+            ok = test_deployment(pos)
             if not ok and ask_yes_no("\nRe-déployer la configuration complète ?"):
                 ok = deploy_node(node_type)
             elif ok:
@@ -419,12 +568,35 @@ def assist_node():
         print("  Quel rôle lui attribuer ?")
         print(f"    1. {maison}  — fixe, relié au Raspberry Pi (passerelle Internet)")
         print(f"    2. {portable}  — portable, accompagne le téléphone")
+        print("    3. Nœud standard  — hors MeshBridge, conforme Netiquette (canal public)")
         while True:
-            choix = input("  Choix (1/2) : ").strip()
-            if choix in ("1", "2"):
+            choix = input("  Choix (1/2/3) : ").strip()
+            if choix in ("1", "2", "3"):
                 break
-        node_type = "Maison" if choix == "1" else "Portable"
-        ok = deploy_node(node_type)
+
+        if choix == "3":
+            while True:
+                long_name = input("  Nom long du nœud (neutre de préférence) : ").strip()
+                if long_name:
+                    break
+            while True:
+                short_name = input("  Nom court (2 à 4 caractères) : ").strip()
+                if 2 <= len(short_name) <= 4:
+                    break
+            mobile = ask_yes_no("  Nœud mobile (sac, voiture) plutôt que fixe ?")
+            if mobile:
+                # Netiquette : tout nœud transporté reste en CLIENT_MUTE
+                role = "CLIENT_MUTE"
+            else:
+                dense = ask_yes_no("  Le mesh est-il déjà dense ici (>50 nœuds visibles dans l'app) ?")
+                role = "CLIENT_MUTE" if dense else "CLIENT"
+                if role == "CLIENT":
+                    print("  \033[90m(zone peu couverte → CLIENT : le nœud aidera à relayer)\033[0m")
+            node_type = "Standard"
+            ok = deploy_standard_node(long_name, short_name, mobile, role)
+        else:
+            node_type = "Maison" if choix == "1" else "Portable"
+            ok = deploy_node(node_type)
 
     # Pierre conforme → proposer le BLE dans la foulée (l'étape s'oubliait)
     if node_type == "Maison" and ok:

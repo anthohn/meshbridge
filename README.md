@@ -20,6 +20,8 @@ Raspberry Pi  →  Internet
 
 Le téléphone n'a jamais de connexion télécom. Toutes les commandes transitent par radio LoRa jusqu'au Raspberry Pi, qui va chercher l'information sur le web et la renvoie **compressée par IA** pour tenir dans un paquet radio (~200 octets).
 
+Les nœuds vivent sur **deux canaux** : le canal 0 est le canal public suisse — il fixe la fréquence radio et permet aux autres nœuds du mesh de **relayer** le trafic (portée étendue) — tandis que les commandes passent sur le canal 1 `MeshBridge`, chiffré : les relais publics transportent ces paquets sans pouvoir les lire.
+
 Pierre est physiquement séparé du Pi (lien BLE) pour être placé à l'endroit radio-optimal (fenêtre, hauteur), sans être contraint par le trajet d'un câble USB.
 
 ---
@@ -102,7 +104,14 @@ pip install meshtastic python-dotenv
 python3 scripts/config_meshbridge.py
 ```
 
-Le script est un **assistant** : il détecte le nœud branché en USB et guide pas à pas — il refuse de continuer si deux nœuds sont branchés en même temps, demande le rôle du nœud s'il est vierge (Pierre fixe / Paul portable), déploie puis vérifie la configuration (7/7 attendu), et propose d'activer le BLE juste après Pierre. Un nœud déjà configuré est simplement vérifié. Suivre les instructions à l'écran pour traiter les deux nœuds l'un après l'autre.
+Le script est un **assistant** : il détecte le nœud branché en USB et guide pas à pas — il refuse de continuer si deux nœuds sont branchés en même temps, demande le rôle du nœud s'il est vierge (Pierre fixe / Paul portable), déploie puis vérifie la configuration (8/8 attendu, canal public compris), et propose d'activer le BLE juste après Pierre. Un nœud déjà configuré est simplement vérifié. Suivre les instructions à l'écran pour traiter les deux nœuds l'un après l'autre.
+
+L'assistant propose aussi un mode **nœud standard** (option 3) : configuration conforme à la Netiquette pour un nœud qui ne fait pas partie de MeshBridge — canal public uniquement, sans PSK. Le rôle suit la règle de la Netiquette : `CLIENT_MUTE` en zone dense ou pour tout nœud transporté, `CLIENT` en zone peu couverte (le nœud aide alors à relayer le mesh).
+
+#### Dépannage (Linux)
+
+- **`Permission denied` sur `/dev/ttyUSB0`/`/dev/ttyACM0`** : l'utilisateur doit appartenir au groupe `dialout` (`sudo usermod -a -G dialout $USER`, puis se déconnecter/reconnecter). L'assistant le détecte et affiche la commande exacte.
+- **Timeouts en boucle alors que le nœud est branché** : ModemManager sonde les ports série (il les prend pour des modems). Le désactiver s'il n'est pas utilisé (`sudo systemctl disable --now ModemManager`), ou l'exclure par règle udev (`ENV{ID_MM_DEVICE_IGNORE}="1"` pour le vendor id du nœud), puis débrancher/rebrancher.
 
 ### 2. Appairage BLE Pi ↔ Pierre (une seule fois)
 
