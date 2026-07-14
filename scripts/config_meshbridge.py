@@ -163,7 +163,9 @@ class MeshtasticCLI:
     REBOOT_SIGNS = ("no serial meshtastic device", "connection refused",
                     "error connecting", "no meshtastic device found",
                     "serialexception", "device not found", "timed out",
-                    "multiple serial ports")
+                    "multiple serial ports", "not found", "file not found",
+                    "no such file or directory", "input/output error",
+                    "write failed", "read failed")
 
     def __init__(self):
         self.port = None   # épinglé au premier nœud vu ; ré-épinglé après reboot
@@ -338,8 +340,12 @@ def deploy(cli, profile):
         if profile.meshbridge:
             show_fingerprint(cli)
         print("")
-        print(f"  \033[92m✅ '{profile.long_name}' déployé et vérifié.\033[0m" if conforme
-              else f"  \033[91m⚠ '{profile.long_name}' déployé mais NON conforme.\033[0m")
+        if conforme:
+            print(f"  \033[92m✅ '{profile.long_name}' déployé et vérifié.\033[0m")
+            print("  \033[90m• Note Wio Tracker/nRF52 : si les boutons ou l'écran semblent figés,")
+            print("    débranchez le câble USB et faites un appui court sur RESET.\033[0m")
+        else:
+            print(f"  \033[91m⚠ '{profile.long_name}' déployé mais NON conforme.\033[0m")
         return conforme
     except Exception as e:
         fail(f"Déploiement interrompu : {e}")
