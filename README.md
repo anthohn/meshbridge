@@ -104,7 +104,7 @@ pip install meshtastic python-dotenv
 python3 scripts/config_meshbridge.py
 ```
 
-Le script est un **assistant** : il détecte le nœud branché en USB et guide pas à pas — il refuse de continuer si deux nœuds sont branchés en même temps, demande le rôle du nœud s'il est vierge (Pierre fixe / Paul portable), déploie puis vérifie la configuration (8/8 attendu, canal public compris), et propose d'activer le BLE juste après Pierre. Un nœud déjà configuré est simplement vérifié. Suivre les instructions à l'écran pour traiter les deux nœuds l'un après l'autre.
+Le script est un **assistant** : il détecte le nœud branché en USB et guide pas à pas — il refuse de continuer si deux nœuds sont branchés en même temps, demande le rôle du nœud s'il est vierge (Pierre fixe / Paul portable), déploie puis vérifie la configuration (10/10 attendu — réglages LoRa **et** table des canaux : canal 0 public, canal 1 MeshBridge, aucun canal résiduel), vide la liste des nœuds connus (NodeDB — elle se repeuple à l'écoute du mesh), et propose d'activer le BLE juste après Pierre. Un nœud déjà configuré est simplement vérifié. Suivre les instructions à l'écran pour traiter les deux nœuds l'un après l'autre.
 
 L'assistant propose aussi un mode **nœud standard** (option 3) : configuration conforme à la Netiquette pour un nœud qui ne fait pas partie de MeshBridge — canal public uniquement, sans PSK. Le rôle suit la règle de la Netiquette : `CLIENT_MUTE` en zone dense ou pour tout nœud transporté, `CLIENT` en zone peu couverte (le nœud aide alors à relayer le mesh).
 

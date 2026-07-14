@@ -7,7 +7,8 @@ Fonctionnement : le script détecte le nœud branché en USB et guide
 pas à pas. Un nœud vierge se voit attribuer un rôle (Pierre fixe /
 Paul portable) ; un nœud déjà nommé est vérifié en priorité.
 Chaque paramètre critique est relu après écriture et comparé à la
-valeur attendue — le succès n'est déclaré qu'à 8/8.
+valeur attendue, y compris la table des canaux — le succès n'est déclaré
+que si TOUS les contrôles passent (10/10 pour un nœud MeshBridge).
 """
 
 import os
@@ -314,13 +315,11 @@ def set_role_settings(node_type):
     ])
     time.sleep(3)
 
-def set_private_channel():
-    write_title("[3/3] Canaux : public (0, portée) + MeshBridge privé (1, chiffré)")
-
-    # Canal 0 = canal public suisse par défaut. INDISPENSABLE pour la portée :
-    # la fréquence LoRa dérive du nom du canal primary, donc être sur le public
-    # met les nœuds sur la même fréquence que le mesh suisse → les autres nœuds
-    # relaient notre trafic (rebonds). Un primary custom isolerait les nœuds.
+def set_public_primary():
+    """Canal 0 = canal public suisse par défaut. INDISPENSABLE pour la portée :
+    la fréquence LoRa dérive du nom du canal primary, donc être sur le public
+    met le nœud sur la même fréquence que le mesh suisse → les autres nœuds
+    relaient son trafic (rebonds). Un primary custom isolerait le nœud."""
     write_step("Canal 0 remis au public suisse (fréquence du mesh, rebonds)...")
     invoke_meshtastic([
         "--ch-index", "0",
@@ -328,6 +327,41 @@ def set_private_channel():
         "--ch-set", "name", ""
     ])
     time.sleep(3)
+
+
+def purge_extra_channels():
+    """Supprime les canaux résiduels (index ≥ 2). Un flash de firmware en
+    mode « update » ne nettoie PAS la config : les vieux canaux survivent.
+    Le déploiement doit aboutir à un état exact — 0 public + 1 MeshBridge,
+    rien d'autre. Suppression du plus haut index vers le bas."""
+    try:
+        info = invoke_meshtastic(["--info"])
+    except Exception as e:
+        write_fail(f"Lecture des canaux impossible : {e}")
+        return
+    residuels = sorted({int(m.group(1))
+                        for m in re.finditer(r"Index (\d+): SECONDARY", info)
+                        if int(m.group(1)) >= 2}, reverse=True)
+    for i in residuels:
+        write_step(f"Suppression du canal résiduel (index {i})...")
+        invoke_meshtastic(["--ch-index", str(i), "--ch-del"])
+        time.sleep(2)
+
+
+def reset_nodedb():
+    """Vide la liste des nœuds connus (NodeDB). Après un changement de
+    canal/fréquence, les anciennes entrées ne reflètent plus ce que le
+    nœud entend réellement — repartir de zéro rend la liste fiable.
+    Elle se repeuple automatiquement à l'écoute du mesh."""
+    write_step("Réinitialisation de la liste des nœuds connus (NodeDB)...")
+    invoke_meshtastic(["--reset-nodedb"])
+    time.sleep(3)
+
+
+def set_private_channel():
+    write_title("[3/3] Canaux : public (0, portée) + MeshBridge privé (1, chiffré)")
+
+    set_public_primary()
 
     # Canal 1 = MeshBridge chiffré. Les relais publics transportent ces paquets
     # sans pouvoir les lire (ils n'ont pas le PSK) : portée ET confidentialité.
@@ -341,39 +375,78 @@ def set_private_channel():
     ])
     time.sleep(5) # Pause plus longue après la configuration finale des canaux avant vérification
 
+    purge_extra_channels()
+
 # ======================================================================
 #  VÉRIFICATION POST-DÉPLOIEMENT
 # ======================================================================
 
-def test_primary_channel():
-    """Vérifie que le canal 0 (primary) est bien le canal public par défaut.
-    La fréquence LoRa dérive du NOM du canal primary : un primary
-    personnalisé isole le nœud du mesh public — plus aucun rebond
-    (vécu : un canal « Höhn » résiduel rendait Paul sourd au mesh)."""
+def test_channels(strict=True):
+    """Vérifie la table des canaux (une seule lecture --info) et renvoie
+    une LISTE de résultats, un par contrôle :
+      - canal 0 = public par défaut (fixe la fréquence du mesh → rebonds) ;
+      - en mode strict (nœuds MeshBridge) : canal 1 = « MeshBridge » et
+        AUCUN canal résiduel au-delà.
+    Règle : tout ce que le déploiement garantit, la vérification doit le
+    contrôler — sinon un nœud « conforme en apparence » (p. ex. canaux
+    fantômes survivant à un flash « update ») ne déclenche jamais le
+    re-déploiement qui l'aurait réparé (vécu)."""
     try:
         info = invoke_meshtastic(["--info"])
     except Exception as e:
-        write_fail(f"{'Canal 0':<22} = ERREUR (illisible : {e})")
-        return False
+        write_fail(f"{'Canaux':<22} = ERREUR (illisible : {e})")
+        return [False]
 
-    for line in info.splitlines():
-        if "Index 0: PRIMARY" in line:
-            m = re.search(r'"name":\s*"([^"]*)"', line)
-            nom = m.group(1) if m else ""
-            if nom == "" and "psk=secret" not in line:
-                write_ok(f"{'Canal 0':<22} = public (défaut)")
-                return True
+    resultats = []
+
+    # Canal 0 : primary public (nom vide + clé par défaut)
+    ligne0 = next((l for l in info.splitlines() if "Index 0: PRIMARY" in l), None)
+    if ligne0 is None:
+        write_fail(f"{'Canal 0':<22} = introuvable dans --info")
+        resultats.append(False)
+    else:
+        m = re.search(r'"name":\s*"([^"]*)"', ligne0)
+        nom = m.group(1) if m else ""
+        if nom == "" and "psk=secret" not in ligne0:
+            write_ok(f"{'Canal 0':<22} = public (défaut)")
+            resultats.append(True)
+        else:
             write_fail(f"{'Canal 0':<22} = personnalisé « {nom or 'clé custom'} »  (attendu : public)")
-            return False
+            resultats.append(False)
 
-    write_fail(f"{'Canal 0':<22} = introuvable dans --info")
-    return False
+    if not strict:
+        return resultats
+
+    # Canal 1 : MeshBridge
+    ligne1 = next((l for l in info.splitlines() if "Index 1: SECONDARY" in l), None)
+    if ligne1 and '"name": "MeshBridge"' in ligne1:
+        write_ok(f"{'Canal 1':<22} = MeshBridge")
+        resultats.append(True)
+    else:
+        write_fail(f"{'Canal 1':<22} = absent ou différent  (attendu : MeshBridge)")
+        resultats.append(False)
+
+    # Canaux résiduels (index ≥ 2) : la purge du déploiement doit les avoir ôtés
+    residuels = sorted({int(m.group(1))
+                        for m in re.finditer(r"Index (\d+): SECONDARY", info)
+                        if int(m.group(1)) >= 2})
+    if residuels:
+        write_fail(f"{'Canaux résiduels':<22} = index {residuels}  (attendu : aucun)")
+        resultats.append(False)
+    else:
+        write_ok(f"{'Canaux résiduels':<22} = aucun")
+        resultats.append(True)
+
+    return resultats
 
 
-def test_deployment(pos_expected, rebroadcast="LOCAL_ONLY", role="CLIENT_MUTE"):
-    """Relit les 8 champs critiques. `rebroadcast` : LOCAL_ONLY pour les
-    nœuds MeshBridge, ALL pour un nœud standard (défaut Netiquette).
-    `role` : CLIENT_MUTE partout, sauf nœud standard en zone peu couverte."""
+def test_deployment(pos_expected, rebroadcast="LOCAL_ONLY", role="CLIENT_MUTE",
+                    strict_channels=True):
+    """Relit les champs critiques : 7 réglages + la table des canaux.
+    `rebroadcast`/`role` : LOCAL_ONLY/CLIENT_MUTE pour les nœuds MeshBridge,
+    variables pour un nœud standard. `strict_channels` : True pour MeshBridge
+    (canal 1 + absence de résiduels contrôlés), False pour un nœud standard
+    (seul le canal 0 public est exigé, ses canaux perso ne nous regardent pas)."""
     write_title("Vérification (relecture réelle des champs)")
 
     results = [
@@ -384,8 +457,8 @@ def test_deployment(pos_expected, rebroadcast="LOCAL_ONLY", role="CLIENT_MUTE"):
         test_setting("device.rebroadcast_mode", rebroadcast, "Rebroadcast"),
         test_setting("position.position_broadcast_smart_enabled", "False", "Smart position"),
         test_setting("position.position_broadcast_secs", pos_expected, "Position interval"),
-        test_primary_channel()
     ]
+    results += test_channels(strict_channels)
 
     passed = sum(1 for r in results if r)
     total = len(results)
@@ -417,7 +490,7 @@ def show_channel_fingerprint():
 # ======================================================================
 
 def deploy_node(node_type):
-    """Déploie + vérifie un nœud. Renvoie True si conforme (8/8)."""
+    """Déploie + vérifie un nœud. Renvoie True si conforme (10/10)."""
     node = CONFIG["Nodes"][node_type]
     name = node["Long"]
 
@@ -425,6 +498,7 @@ def deploy_node(node_type):
         set_common_settings(node["Long"], node["Short"])
         set_role_settings(node_type)
         set_private_channel()
+        reset_nodedb()
 
         pos = "86400" if node_type == "Maison" else "21600"
         ok = test_deployment(pos)
@@ -441,7 +515,7 @@ def deploy_node(node_type):
         write_fail(f"Déploiement interrompu : {e}")
         return False
 
-def deploy_standard_node(long_name, short_name, mobile, role):
+def deploy_standard_node(long_name, short_name, mobile, role, purge_nodedb=False):
     """Nœud hors MeshBridge : conforme Netiquette, sur le canal public
     par défaut (pas de canal privé, pas de PSK).
     Rôle selon la règle Netiquette : CLIENT_MUTE en zone dense ou pour
@@ -454,6 +528,12 @@ def deploy_standard_node(long_name, short_name, mobile, role):
         set_common_settings(long_name, short_name, etape="[1/2]")
 
         write_title(f"[2/2] Règles Netiquette ({'mobile / position 6h' if mobile else 'fixe / position 24h'}, rôle {role})")
+
+        # Même exigence que MeshBridge : sans canal 0 public, le nœud serait
+        # sur une autre fréquence que le mesh suisse (invisible, non relayé).
+        # Les éventuels canaux perso (index ≥ 1) sont laissés tels quels.
+        set_public_primary()
+
         write_step("Écriture des réglages de position...")
         invoke_meshtastic([
             "--set", "position.position_broadcast_secs", pos_secs,
@@ -468,7 +548,11 @@ def deploy_standard_node(long_name, short_name, mobile, role):
         ])
         time.sleep(3)
 
-        ok = test_deployment(pos_secs, rebroadcast="ALL", role=role)
+        if purge_nodedb:
+            reset_nodedb()
+
+        ok = test_deployment(pos_secs, rebroadcast="ALL", role=role,
+                             strict_channels=False)
         print("")
         if ok:
             print(f"  \033[92m✅ Nœud standard '{long_name}' déployé ET vérifié (Netiquette).\033[0m")
@@ -592,8 +676,10 @@ def assist_node():
                 role = "CLIENT_MUTE" if dense else "CLIENT"
                 if role == "CLIENT":
                     print("  \033[90m(zone peu couverte → CLIENT : le nœud aidera à relayer)\033[0m")
+            purge_db = ask_yes_no("  Vider aussi la liste des nœuds connus (repart de zéro) ?")
             node_type = "Standard"
-            ok = deploy_standard_node(long_name, short_name, mobile, role)
+            ok = deploy_standard_node(long_name, short_name, mobile, role,
+                                      purge_nodedb=purge_db)
         else:
             node_type = "Maison" if choix == "1" else "Portable"
             ok = deploy_node(node_type)
