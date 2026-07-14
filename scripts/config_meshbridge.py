@@ -97,6 +97,8 @@ class NodeProfile:
         for field, value in COMMON_SETTINGS:
             if field == "lora.modem_preset":
                 custom_common.append((field, self.modem_preset))
+            elif field == "lora.hop_limit" and self.modem_preset == "LONG_FAST":
+                custom_common.append((field, "5"))
             else:
                 custom_common.append((field, value))
         return custom_common + self.role_settings()
@@ -590,13 +592,15 @@ def ask_role():
 def ask_modem_preset():
     """Demande à l'utilisateur de choisir le modem preset."""
     print("  Quel modem preset utiliser ?")
-    print("    1. MEDIUM_FAST (Norme Netiquette Suisse, par défaut)")
-    print("    2. LONG_FAST (Portée maximale, meilleure visibilité des autres nœuds)")
+    print("    1. MEDIUM_FAST (Norme Netiquette Suisse, par défaut — 3 rebonds)")
+    print("    2. LONG_FAST (Portée maximale, meilleure visibilité des autres nœuds — 5 rebonds)")
     while True:
         rep = input("  Choix (1/2, Entrée par défaut) : ").strip()
         if not rep or rep == "1":
+            print("  [i] Option MEDIUM_FAST sélectionnée : lora.hop_limit configuré à 3 rebonds.")
             return "MEDIUM_FAST"
         if rep == "2" or rep.lower() in ("l", "long", "long_fast"):
+            print("  [i] Option LONG_FAST sélectionnée : lora.hop_limit configuré à 5 rebonds.")
             return "LONG_FAST"
 
 

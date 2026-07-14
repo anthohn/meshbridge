@@ -19,6 +19,7 @@ def test_node_profile_default_preset():
     # Vérifier que le preset MEDIUM_FAST est présent dans la liste des réglages
     settings_dict = dict(profile.settings())
     assert settings_dict.get("lora.modem_preset") == "MEDIUM_FAST"
+    assert settings_dict.get("lora.hop_limit") == "3"
     
     # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
@@ -41,6 +42,7 @@ def test_node_profile_custom_preset():
     # Vérifier que le preset LONG_FAST a bien écrasé la valeur par défaut dans settings()
     settings_dict = dict(profile.settings())
     assert settings_dict.get("lora.modem_preset") == "LONG_FAST"
+    assert settings_dict.get("lora.hop_limit") == "5"
     
     # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
