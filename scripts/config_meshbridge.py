@@ -60,6 +60,7 @@ COMMON_SETTINGS = [
     ("neighbor_info.enabled", "false"),
     ("range_test.enabled", "false"),
     ("store_forward.enabled", "false"),
+    ("display.screen_on_secs", "15"),
 ]
 
 MESHBRIDGE_INDEX = 1   # index du canal privé MeshBridge (le 0 reste public)
