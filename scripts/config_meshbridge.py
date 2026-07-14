@@ -279,7 +279,14 @@ def set_common_settings(long_name, short_name, etape="[1/3]"):
         "--set", "telemetry.device_update_interval", "259200",
         "--set", "telemetry.environment_measurement_enabled", "false",
         "--set", "telemetry.power_measurement_enabled", "false",
-        "--set", "mqtt.enabled", "false"
+        "--set", "mqtt.enabled", "false",
+        # Modules bavards : ils émettent en fond et grignotent l'airtime,
+        # à rebours de la Netiquette. Un nœud venu d'un autre firmware
+        # (MeshCore) ou d'anciens essais peut les avoir activés → on les
+        # remet explicitement à OFF (état connu, pas hérité).
+        "--set", "neighbor_info.enabled", "false",
+        "--set", "range_test.enabled", "false",
+        "--set", "store_forward.enabled", "false"
     ])
     time.sleep(3)
 
@@ -356,6 +363,18 @@ def reset_nodedb():
     write_step("Réinitialisation de la liste des nœuds connus (NodeDB)...")
     invoke_meshtastic(["--reset-nodedb"])
     time.sleep(3)
+
+
+def factory_reset():
+    """Config d'usine AVANT toute écriture : garantit un état connu quelle
+    que soit l'histoire du nœud (ancien firmware, ex-MeshCore, essais).
+    On utilise --factory-reset (variante « config ») qui PRÉSERVE l'appairage
+    BLE et les clés PKI : le lien Pi ↔ Pierre survit, aucun ré-appairage.
+    (--factory-reset-device effacerait aussi le BLE — non souhaité ici.)
+    Le nœud reboote → délai généreux, la reconnexion CLI est gérée par retry."""
+    write_step("Réinitialisation d'usine (config ; l'appairage BLE est conservé)...")
+    invoke_meshtastic(["--factory-reset"])
+    time.sleep(10)  # reboot complet après un factory reset
 
 
 def set_private_channel():
@@ -457,6 +476,9 @@ def test_deployment(pos_expected, rebroadcast="LOCAL_ONLY", role="CLIENT_MUTE",
         test_setting("device.rebroadcast_mode", rebroadcast, "Rebroadcast"),
         test_setting("position.position_broadcast_smart_enabled", "False", "Smart position"),
         test_setting("position.position_broadcast_secs", pos_expected, "Position interval"),
+        test_setting("neighbor_info.enabled", "False", "Module neighbor_info"),
+        test_setting("range_test.enabled", "False", "Module range_test"),
+        test_setting("store_forward.enabled", "False", "Module store_forward"),
     ]
     results += test_channels(strict_channels)
 
@@ -495,6 +517,7 @@ def deploy_node(node_type):
     name = node["Long"]
 
     try:
+        factory_reset()          # table rase d'abord : état connu garanti
         set_common_settings(node["Long"], node["Short"])
         set_role_settings(node_type)
         set_private_channel()
@@ -515,16 +538,21 @@ def deploy_node(node_type):
         write_fail(f"Déploiement interrompu : {e}")
         return False
 
-def deploy_standard_node(long_name, short_name, mobile, role, purge_nodedb=False):
+def deploy_standard_node(long_name, short_name, mobile, role, factory_first=False):
     """Nœud hors MeshBridge : conforme Netiquette, sur le canal public
     par défaut (pas de canal privé, pas de PSK).
     Rôle selon la règle Netiquette : CLIENT_MUTE en zone dense ou pour
     tout nœud transporté ; CLIENT en zone peu couverte, pour aider le
-    mesh. Rebroadcast ALL (défaut Netiquette — n'a d'effet qu'en CLIENT)."""
+    mesh. Rebroadcast ALL (défaut Netiquette — n'a d'effet qu'en CLIENT).
+    `factory_first` : reset d'usine avant config (optionnel — un nœud
+    standard peut appartenir à quelqu'un et avoir des réglages à garder)."""
     pos_secs = "21600" if mobile else "86400"
     fixed = "false" if mobile else "true"
 
     try:
+        if factory_first:
+            factory_reset()
+
         set_common_settings(long_name, short_name, etape="[1/2]")
 
         write_title(f"[2/2] Règles Netiquette ({'mobile / position 6h' if mobile else 'fixe / position 24h'}, rôle {role})")
@@ -548,8 +576,7 @@ def deploy_standard_node(long_name, short_name, mobile, role, purge_nodedb=False
         ])
         time.sleep(3)
 
-        if purge_nodedb:
-            reset_nodedb()
+        reset_nodedb()
 
         ok = test_deployment(pos_secs, rebroadcast="ALL", role=role,
                              strict_channels=False)
@@ -676,10 +703,10 @@ def assist_node():
                 role = "CLIENT_MUTE" if dense else "CLIENT"
                 if role == "CLIENT":
                     print("  \033[90m(zone peu couverte → CLIENT : le nœud aidera à relayer)\033[0m")
-            purge_db = ask_yes_no("  Vider aussi la liste des nœuds connus (repart de zéro) ?")
+            factory = ask_yes_no("  Réinitialiser d'usine d'abord (efface toute config passée) ?", default=False)
             node_type = "Standard"
             ok = deploy_standard_node(long_name, short_name, mobile, role,
-                                      purge_nodedb=purge_db)
+                                      factory_first=factory)
         else:
             node_type = "Maison" if choix == "1" else "Portable"
             ok = deploy_node(node_type)
