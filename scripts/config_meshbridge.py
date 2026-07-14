@@ -106,7 +106,7 @@ class NodeProfile:
 
 # Les deux nœuds du projet : Pierre fixe (relié au Pi), Paul portable.
 MESHBRIDGE_NODES = {
-    "Maison":   NodeProfile("Pierre", "PIE", "CLIENT_MUTE", "LOCAL_ONLY",
+    "Maison":   NodeProfile("Pierre", "PIE", "CLIENT", "ALL",
                             pos_secs="86400", fixed="true", meshbridge=True),
     "Portable": NodeProfile("Paul", "PAU", "CLIENT_MUTE", "LOCAL_ONLY",
                             pos_secs="21600", fixed="false", meshbridge=True),
