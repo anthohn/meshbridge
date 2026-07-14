@@ -32,7 +32,7 @@ import shutil
 import getpass
 import hashlib
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dotenv import load_dotenv
 
 # ======================================================================
@@ -75,6 +75,7 @@ class NodeProfile:
     pos_secs: str      # intervalle d'envoi de la position (secondes)
     fixed: str         # "true" pour un nœud qui ne bouge pas
     meshbridge: bool   # canal privé 1 + vérification stricte des canaux
+    modem_preset: str = "MEDIUM_FAST"
 
     def role_settings(self):
         """Les réglages propres à ce nœud (le reste est commun à tous)."""
@@ -88,7 +89,13 @@ class NodeProfile:
     def settings(self):
         """L'état désiré COMPLET du nœud — la vérification relit exactement
         cette liste, champ par champ."""
-        return COMMON_SETTINGS + self.role_settings()
+        custom_common = []
+        for field, value in COMMON_SETTINGS:
+            if field == "lora.modem_preset":
+                custom_common.append((field, self.modem_preset))
+            else:
+                custom_common.append((field, value))
+        return custom_common + self.role_settings()
 
 
 # Les deux nœuds du projet : Pierre fixe (relié au Pi), Paul portable.
@@ -564,6 +571,19 @@ def ask_role():
     return standard_profile(long_name, short_name, mobile, choose_standard_role(mobile))
 
 
+def ask_modem_preset():
+    """Demande à l'utilisateur de choisir le modem preset."""
+    print("  Quel modem preset utiliser ?")
+    print("    1. MEDIUM_FAST (Norme Netiquette Suisse, par défaut)")
+    print("    2. LONG_FAST (Portée maximale, meilleure visibilité des autres nœuds)")
+    while True:
+        rep = input("  Choix (1/2, Entrée par défaut) : ").strip()
+        if not rep or rep == "1":
+            return "MEDIUM_FAST"
+        if rep == "2" or rep.lower() in ("l", "long", "long_fast"):
+            return "LONG_FAST"
+
+
 def assist_node(cli):
     """Prend en charge le nœud branché, de bout en bout."""
     wait_for_single_node(cli)
@@ -585,9 +605,11 @@ def assist_node(cli):
 
     print(f"\n  Nom actuel du nœud : {owner or 'inconnu'}.")
     profile = ask_role()
+    preset = ask_modem_preset()
+    profile = replace(profile, modem_preset=preset)
     deployed = deploy(cli, profile)
 
-    if profile == MESHBRIDGE_NODES["Maison"] and deployed \
+    if profile.long_name == MESHBRIDGE_NODES["Maison"].long_name and deployed \
             and ask_yes_no("\nActiver le BLE sur Pierre maintenant ?"):
         enable_ble_pierre(cli)
 
