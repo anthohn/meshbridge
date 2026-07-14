@@ -4,9 +4,12 @@ MeshBridge — Assistant de configuration des nœuds Meshtastic
 Normes Netiquette Suisse (janvier 2026) + canal privé chiffré.
 
 Principe : brancher UN nœud en USB, lancer le script, se laisser guider.
-Chaque déploiement repart d'une config d'usine (état connu garanti), écrit
-la configuration voulue, puis la RELIT champ par champ — le succès n'est
-déclaré que si tout concorde.
+Chaque déploiement remet le nœud dans un état connu — table des canaux
+nettoyée, tous les champs réécrits — puis RELIT le tout champ par champ : le
+succès n'est déclaré que si tout concorde. On n'utilise PAS --factory-reset :
+il gèle certaines cartes nRF52 (Wio Tracker) en boucle de boot. Le même état
+propre est obtenu par des écritures que toute carte supporte (cf. write_profile).
+Pour effacer une carte vraiment sale, voir le README (flasher, Erase Flash).
 
 Le fichier est organisé en couches :
   1. ÉTAT DÉSIRÉ      — les profils de nœuds, sous forme de données ;
@@ -17,8 +20,8 @@ Le fichier est organisé en couches :
                         qui a été écrit ;
   5. ASSISTANT        — le déroulé interactif.
 
-Robustesse (le cœur du script) : un nœud reboote souvent (factory-reset,
-changement de rôle…) et peut réapparaître sur un autre port série. Le port
+Robustesse (le cœur du script) : un nœud reboote souvent (changement de
+région, de preset…) et peut réapparaître sur un autre port série. Le port
 est donc épinglé, et après chaque écriture on attend que le nœud RÉPONDE de
 nouveau (wait_until_ready) — pas seulement que le port réapparaisse. C'est ce
 qui évite les « multiple serial ports » ET les écritures perdues (région/preset).
@@ -270,6 +273,21 @@ def write_profile(cli, profile):
     for name, settings in sections.items():
         cli.apply(set_args(settings), f"Réglages {name}…")
     cli.apply(set_args(lora), "Réglages lora — région EU_868, la radio s'allume…")
+    reset_channels(cli, profile)
+
+
+def reset_channels(cli, profile):
+    """Remet la table des canaux à neuf — le nettoyage que le factory-reset
+    nous apportait, mais avec des opérations que TOUTE carte supporte (le
+    factory-reset, lui, gèle les nRF52). On supprime les canaux résiduels
+    d'une vie antérieure, puis on (re)pose le canal 0 public et, pour un nœud
+    MeshBridge, le canal 1 chiffré."""
+    keep = 2 if profile.meshbridge else 1   # on garde les index < keep
+    info = cli.run(["--info"])
+    residual = sorted({int(m.group(1)) for m in re.finditer(r"Index (\d+): SECONDARY", info)
+                       if int(m.group(1)) >= keep}, reverse=True)
+    for idx in residual:   # du plus haut au plus bas (les canaux sont contigus)
+        cli.apply(["--ch-index", str(idx), "--ch-del"], f"Suppression du canal résiduel {idx}…")
     set_public_primary(cli)
     if profile.meshbridge:
         add_meshbridge_channel(cli)
@@ -297,12 +315,9 @@ def add_meshbridge_channel(cli):
 
 
 def deploy(cli, profile):
-    """Déploiement complet : config d'usine → écriture du profil → relecture."""
+    """Déploiement complet : écriture du profil (qui remet aussi les canaux à
+    neuf) → vide la NodeDB → relecture."""
     try:
-        # Config d'usine AVANT toute écriture : état connu quelle que soit
-        # l'histoire du nœud. --factory-reset préserve l'appairage BLE et les
-        # clés PKI (le lien Pi ↔ Pierre survit).
-        cli.apply(["--factory-reset"], "Réinitialisation d'usine (l'appairage BLE est conservé)…")
         write_profile(cli, profile)
         # Vide la liste des nœuds connus : après un changement de fréquence,
         # les anciennes entrées sont trompeuses. Elle se repeuple à l'écoute.
