@@ -40,18 +40,14 @@ from dotenv import load_dotenv
 #     (l'écriture ET la vérification parcourent ces listes)
 # ======================================================================
 
-# La région puis le preset font rebooter le nœud quand ils quittent leur
-# valeur d'usine : chacun est écrit dans sa propre transaction, avant le reste.
-LORA_REGION = [("lora.region", "EU_868")]
-LORA_PRESET = [
-    ("lora.use_preset", "true"),
-    ("lora.modem_preset", "MEDIUM_FAST"),
-]
-
 # Réglages communs à tous les nœuds : LoRa sobre, télémétrie espacée, et
 # modules bavards OFF (ils émettent en fond et grignotent l'airtime —
-# anti-Netiquette).
+# anti-Netiquette). La section lora (région, preset…) allume la radio et
+# fait rebooter le nœud : write_profile l'écrit en dernier.
 COMMON_SETTINGS = [
+    ("lora.region", "EU_868"),
+    ("lora.use_preset", "true"),
+    ("lora.modem_preset", "MEDIUM_FAST"),
     ("lora.hop_limit", "3"),
     ("lora.override_duty_cycle", "false"),
     ("lora.ignore_mqtt", "true"),
@@ -92,7 +88,7 @@ class NodeProfile:
     def settings(self):
         """L'état désiré COMPLET du nœud — la vérification relit exactement
         cette liste, champ par champ."""
-        return LORA_REGION + LORA_PRESET + COMMON_SETTINGS + self.role_settings()
+        return COMMON_SETTINGS + self.role_settings()
 
 
 # Les deux nœuds du projet : Pierre fixe (relié au Pi), Paul portable.
@@ -125,7 +121,7 @@ ENUMS = {
 #  2. CONSOLE
 # ======================================================================
 def step(m):  print(f"  \033[90m-> {m}\033[0m")
-def ok(m):    print(f"  \033[92m[OK]\033[0m   {m}")
+def ok(m):    print(f"  \033[92m[OK]\033[0m    {m}")
 def fail(m):  print(f"  \033[91m[ÉCHEC]\033[0m {m}")
 def title(m): print(f"\n\033[96m{m}\033[0m")
 
@@ -215,18 +211,27 @@ class MeshtasticCLI:
                 raise RuntimeError("CLI 'meshtastic' introuvable : pip install meshtastic")
         raise RuntimeError(f"Nœud injoignable après 15 essais : meshtastic {' '.join(args)}")
 
-    def apply(self, args, label, timeout=90):
+    def apply(self, args, label, ready_timeout=90, cli_timeout=45):
         """Écriture de config. Le nœud reboote souvent → la CLI peut « échouer »
         alors que l'écriture a réussi (liaison coupée avant l'acquittement) : on
         tolère, puis on ATTEND que le nœud réponde de nouveau avant de continuer.
-        Un vrai problème est rattrapé par la vérification finale (relecture)."""
+        Un vrai problème est rattrapé par la vérification finale (relecture).
+        cli_timeout : temps laissé à la CLI elle-même — un gros lot sur une
+        liaison série lente (Heltec/CP2102) dépasse largement les 45 s."""
         step(label)
         try:
-            subprocess.run(self._command(args), capture_output=True, text=True, timeout=45)
+            subprocess.run(self._command(args), capture_output=True, text=True,
+                           timeout=cli_timeout)
         except Exception:
             pass
-        if not self.wait_until_ready(timeout):
-            raise RuntimeError("nœud injoignable après écriture (reboot trop long ? câble data ?)")
+        if not self.wait_until_ready(ready_timeout):
+            # Certaines cartes nRF52 (ex. Wio Tracker) restent allumées mais
+            # muettes après une écriture : seul un redémarrage au bouton les
+            # ranime. On donne sa chance à l'utilisateur avant d'abandonner.
+            print("\033[93m  Le nœud ne répond plus (certaines cartes gèlent sur une écriture).\033[0m")
+            input("\033[93m  Le redémarrer avec son bouton (appui long), puis Entrée… \033[0m")
+            if not self.wait_until_ready(ready_timeout):
+                raise RuntimeError("nœud injoignable après écriture (reboot trop long ? câble data ?)")
 
 # ======================================================================
 #  4. DÉPLOIEMENT & VÉRIFICATION — les deux faces du même état désiré
@@ -240,14 +245,23 @@ def set_args(settings):
 
 
 def write_profile(cli, profile):
-    """Écrit l'état désiré du profil, dans l'ordre imposé par le matériel :
-    région et preset seuls et en premier (les passer de leur valeur d'usine
-    fait rebooter le nœud, ce qui tronquerait un lot plus gros)."""
-    cli.apply(set_args(LORA_REGION), "Région EU_868…")
-    cli.apply(set_args(LORA_PRESET), "Preset MEDIUM_FAST…")
-    cli.apply(["--set-owner", profile.long_name, "--set-owner-short", profile.short_name]
-              + set_args(COMMON_SETTINGS + profile.role_settings()),
-              f"Identité et réglages ({profile.long_name} / {profile.short_name})…")
+    """Écrit l'état désiré du profil. Deux règles, tirées de l'observation :
+    - une SECTION de config par invocation : la CLI n'acquitte pas les
+      écritures d'un nœud USB local, et un lot groupé de 8 sections en perd
+      presque toujours une ou deux (device, telemetry) ;
+    - la section lora en dernier : tant que la région est vide, la radio est
+      éteinte et le nœud est au calme pour recevoir tout le reste.
+    L'identité (--set-owner) est un message d'administration, pas une
+    écriture de config : elle a son invocation propre."""
+    cli.apply(["--set-owner", profile.long_name, "--set-owner-short", profile.short_name],
+              f"Identité {profile.long_name} / {profile.short_name}…")
+    sections = {}
+    for field, value in profile.settings():
+        sections.setdefault(field.split(".")[0], []).append((field, value))
+    lora = sections.pop("lora")
+    for name, settings in sections.items():
+        cli.apply(set_args(settings), f"Réglages {name}…")
+    cli.apply(set_args(lora), "Réglages lora — région EU_868, la radio s'allume…")
     set_public_primary(cli)
     if profile.meshbridge:
         add_meshbridge_channel(cli)
@@ -286,7 +300,16 @@ def deploy(cli, profile):
         # les anciennes entrées sont trompeuses. Elle se repeuple à l'écoute.
         cli.apply(["--reset-nodedb"], "Réinitialisation de la liste des nœuds connus…")
 
-        conforme = verify(cli, profile)
+        conforme, gaps = verify(cli, profile)
+        # Boucle de convergence : un nœud occupé peut perdre des écritures
+        # malgré tout. Plutôt que tout redéployer, on rejoue UNIQUEMENT ce
+        # qui est en écart, puis on revérifie (deux passes maximum).
+        for _ in range(2):
+            if conforme or not gaps:
+                break
+            fix_gaps(cli, profile, gaps)
+            conforme, gaps = verify(cli, profile)
+
         if profile.meshbridge:
             show_fingerprint(cli)
         print("")
@@ -296,6 +319,20 @@ def deploy(cli, profile):
     except Exception as e:
         fail(f"Déploiement interrompu : {e}")
         return False
+
+
+def fix_gaps(cli, profile, gaps):
+    """Rejoue uniquement ce qui est en écart, chacun par son canal propre :
+    l'identité via --set-owner, les réglages via --set."""
+    settings = [(field, value) for field, value in gaps if field != "owner"]
+    if len(settings) < len(gaps):
+        cli.apply(["--set-owner", profile.long_name,
+                   "--set-owner-short", profile.short_name],
+                  "Correction de l'identité…")
+    if settings:
+        cli.apply(set_args(settings),
+                  f"Correction ciblée de {len(settings)} réglage(s)…",
+                  cli_timeout=180)
 
 
 def read_settings(cli, fields):
@@ -327,10 +364,22 @@ def check_field(field, expected, actual):
     return False
 
 
-def check_channels(cli, strict):
+def check_owner(info, profile):
+    """Vérifie le nom du nœud depuis --info : --set-owner peut se perdre
+    silencieusement (vu sur le Heltec) et n'est pas relisible par --get."""
+    m = re.search(r"^Owner\s*:\s*(.+?)\s*$", info, re.M)
+    actual = m.group(1) if m else None
+    expected = f"{profile.long_name} ({profile.short_name})"
+    if actual == expected:
+        ok(f"{'Owner':<44} = {actual}")
+        return True
+    fail(f"{'Owner':<44} = {actual or 'introuvable'}  (attendu : {expected})")
+    return False
+
+
+def check_channels(info, strict):
     """Contrôle la table des canaux : canal 0 public, et en mode strict le
     canal 1 MeshBridge sans aucun canal résiduel. Un booléen par contrôle."""
-    info = cli.run(["--info"])
     results = []
 
     line0 = next((l for l in info.splitlines() if "Index 0: PRIMARY" in l), None)
@@ -368,13 +417,27 @@ def check_channels(cli, strict):
 
 def verify(cli, profile):
     """Relit l'état désiré champ par champ. La liste vient de profile.settings(),
-    la même que celle écrite : la vérification ne peut pas diverger de l'écriture."""
+    la même que celle écrite : la vérification ne peut pas diverger de l'écriture.
+    Renvoie (conforme, gaps) où gaps liste les (champ, valeur) en écart, à
+    rejouer par fix_gaps — l'identité y figure sous le pseudo-champ 'owner'.
+    (gaps vide si seuls les canaux posent problème : pas corrigeable champ
+    par champ.)"""
     title("Vérification (relecture réelle des champs)")
     wanted = profile.settings()
     actual = read_settings(cli, [field for field, _ in wanted])
-    results = [check_field(field, expected, actual.get(field))
-               for field, expected in wanted]
-    results += check_channels(cli, strict=profile.meshbridge)
+    results, gaps = [], []
+    for field, expected in wanted:
+        good = check_field(field, expected, actual.get(field))
+        results.append(good)
+        if not good:
+            gaps.append((field, expected))
+
+    info = cli.run(["--info"])
+    owner_ok = check_owner(info, profile)
+    results.append(owner_ok)
+    if not owner_ok:
+        gaps.append(("owner", profile.long_name))
+    results += check_channels(info, strict=profile.meshbridge)
 
     passed, total = sum(results), len(results)
     print("")
@@ -382,7 +445,7 @@ def verify(cli, profile):
         print(f"  \033[92m✅ {passed}/{total} — nœud conforme.\033[0m")
     else:
         print(f"  \033[91m❌ {passed}/{total} — {total - passed} à corriger ci-dessus.\033[0m")
-    return passed == total
+    return passed == total, gaps
 
 
 def show_fingerprint(cli):
@@ -477,8 +540,8 @@ def choose_standard_role(mobile):
     return "CLIENT"
 
 
-def ask_new_role():
-    """Menu pour un nœud vierge/inconnu : renvoie le NodeProfile choisi."""
+def ask_role():
+    """Menu de rôle : renvoie le NodeProfile choisi."""
     print("  Quel rôle attribuer à ce nœud ?")
     print(f"    1. {MESHBRIDGE_NODES['Maison'].long_name}  — fixe, relié au Raspberry Pi (passerelle)")
     print(f"    2. {MESHBRIDGE_NODES['Portable'].long_name}  — portable, accompagne le téléphone")
@@ -520,30 +583,9 @@ def assist_node(cli):
         print(f"  \033[93m[i] {version} < dernière stable {latest} — mise à jour conseillée")
         print(f"      via https://flasher.meshtastic.org\033[0m")
 
-    known = {p.long_name: p for p in MESHBRIDGE_NODES.values()}
-    profile, deployed = None, False
-
-    # Nœud déjà reconnu → vérifier d'abord, re-déployer seulement si écart.
-    if owner in known:
-        profile = known[owner]
-        ok(f"Nœud reconnu : {owner} ({'fixe' if profile.fixed == 'true' else 'portable'})")
-        if ask_yes_no("Conserver ce rôle ?"):
-            deployed = verify(cli, profile)
-            if deployed:
-                show_fingerprint(cli)
-            elif ask_yes_no("\nRe-déployer (repart d'une config d'usine) ?"):
-                deployed = deploy(cli, profile)
-            else:
-                profile = None      # abandon → ne pas proposer le BLE
-        else:
-            profile = None          # rôle refusé → menu ci-dessous
-
-    # Nœud vierge, inconnu, ou rôle refusé → choisir et déployer.
-    if profile is None:
-        if owner not in known:
-            print(f"\n  Nœud non configuré (nom actuel : {owner or 'inconnu'}).")
-        profile = ask_new_role()
-        deployed = deploy(cli, profile)
+    print(f"\n  Nom actuel du nœud : {owner or 'inconnu'}.")
+    profile = ask_role()
+    deployed = deploy(cli, profile)
 
     if profile == MESHBRIDGE_NODES["Maison"] and deployed \
             and ask_yes_no("\nActiver le BLE sur Pierre maintenant ?"):
