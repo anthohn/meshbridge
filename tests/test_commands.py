@@ -99,3 +99,30 @@ def test_help_liste_toutes_les_commandes():
     texte = commands.cmd_help("", "auto").text
     for nom in commands.COMMANDS:
         assert f"/{nom}" in texte
+
+
+# ---------------------------------------------------------------- /ask
+def test_ask_sans_ia_ne_renvoie_pas_la_question(monkeypatch):
+    # sans IA, le fallback brut de compress() est la question elle-même :
+    # la renvoyer telle quelle à l'envoyeur n'a aucun sens
+    monkeypatch.setattr(commands, "compress", lambda c, i, m: (c, "raw"))
+    reponse = commands.cmd_ask("capitale du Japon", "auto")
+    assert "capitale du Japon" not in reponse.text
+    assert "IA" in reponse.text
+
+
+# ---------------------------------------------------------------- /meteo
+def test_meteo_encode_la_ville_dans_l_url(monkeypatch):
+    # une ville contenant "?", "#" ou "&" ne doit pas détourner l'URL wttr.in
+    urls = []
+
+    class FauxResp:
+        text = "Geneve: ☀️ +25°C"
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(commands.requests, "get",
+                        lambda url, timeout: urls.append(url) or FauxResp())
+    commands.cmd_meteo("Le Locle?format=j1", "auto")
+    assert "?format=%l" in urls[0]                 # le format prévu est intact
+    assert "Le%20Locle%3Fformat%3Dj1" in urls[0]   # l'argument est encodé

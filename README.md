@@ -11,7 +11,7 @@ Projet de diplôme — École Supérieure d'Informatique de Gestion, Suisse.
 ```
 iPhone (mode avion)
    │  Bluetooth
-Paul  (LilyGO, portable)
+Paul  (Wio Tracker L1 Pro, portable)
    │  LoRa 868 MHz — canal privé chiffré
 Pierre  (Heltec V3, fixe contre la fenêtre)
    │  Bluetooth Low Energy
@@ -55,7 +55,7 @@ meshbridge/
 
 ## Prérequis
 
-- 2 nœuds Meshtastic (LilyGO TTGO + Heltec V3, ou équivalent), firmware ≥ 2.7.0
+- 2 nœuds Meshtastic (Heltec V3 + Seeed Wio Tracker L1 Pro, ou équivalent), firmware ≥ 2.7.0
 - Raspberry Pi avec Python 3.10+ et Bluetooth actif (Pi 4/5 par défaut)
 - [Ollama](https://ollama.com) installé sur le Pi (fallback IA hors-ligne)
 - Une clé API Gemini (optionnelle — le système fonctionne sans, en mode local uniquement)
@@ -199,6 +199,8 @@ Toutes les commandes commencent par `/`. Un message sans `/` est ignoré (le can
 
 Chaque requête traitée est aussi journalisée dans `metrics.csv` (racine du repo, ignoré par Git) : horodatage, commande, mode, source IA, tailles avant/après compression, latence. De quoi mesurer le taux de compression réel et comparer Gemini/Ollama sur la durée.
 
+Les commandes lentes (météo, news, web, ask) reçoivent un accusé de réception immédiat `⏳ traitement…` — la réponse suit après 10 à 60 s selon le backend IA (désactivable via `SEND_ACK` dans `src/config.py` pour économiser l'airtime).
+
 Les réponses sont préfixées d'un emoji indiquant leur source : `⚡` Gemini (cloud), `🏠` Ollama (local), `✂️` texte brut tronqué (aucune IA disponible).
 
 **Choix de l'IA par requête** — surcharge ponctuelle avec `!local` ou `!cloud` en fin de commande. Pratique pour comparer qualité et vitesse des deux backends :
@@ -226,6 +228,8 @@ La suite tourne aussi automatiquement sur GitHub Actions à chaque push.
 ## Conformité
 
 Configuration alignée sur la [*Netiquette Meshtastic Suisse*](docs/netiquette-meshtastic-suisse-janvier-2026.pdf) (version janvier 2026), document communautaire trilingue (DE/FR/EN) inclus dans `docs/` pour référence : preset `MEDIUM_FAST` (standard suisse depuis fin 2025), rôle `CLIENT_MUTE` (recommandé en zone dense), hop limit 3 (« idéal 3 ou 4 »), intervalles de diffusion préconisés (NodeInfo 3 h, position 6 h mobile / 24 h fixe, Smart Position désactivé, télémétrie réduite à 72 h), MQTT ignoré et respect du duty cycle légal de 10 % (EU_868).
+
+L'assistant propose aussi un preset `LONG_FAST` (hop limit 5), signalé **hors Netiquette** : c'est en pratique le preset encore majoritaire du mesh — utile pour la visibilité des autres nœuds et les tests de portée — mais le standard communautaire reste `MEDIUM_FAST`. Les deux nœuds MeshBridge doivent recevoir le même preset pour communiquer.
 
 Document rédigé par la communauté Meshtastic Suisse (MeshTrafficObserver, Haflinger 73, CamFlyerCH, Fox 71) — inclus ici avec attribution, à titre de référence de configuration.
 

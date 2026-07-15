@@ -598,17 +598,18 @@ def ask_role():
 
 
 def ask_modem_preset():
-    """Demande à l'utilisateur de choisir le modem preset."""
-    print("  Quel modem preset utiliser ?")
-    print("    1. MEDIUM_FAST (Norme Netiquette Suisse, par défaut — 3 rebonds)")
-    print("    2. LONG_FAST (Portée maximale, meilleure visibilité des autres nœuds — 5 rebonds)")
+    """Demande à l'utilisateur de choisir le modem preset. Les deux nœuds
+    MeshBridge doivent recevoir le même (sinon les radios ne s'entendent plus)."""
+    print("  Quel modem preset utiliser ? (le même pour les deux nœuds MeshBridge)")
+    print("    1. MEDIUM_FAST (norme Netiquette Suisse — 3 rebonds)")
+    print("    2. LONG_FAST (HORS Netiquette — majoritaire en pratique, portée maximale — 5 rebonds)")
     while True:
         rep = input("  Choix (1/2, Entrée par défaut) : ").strip()
         if not rep or rep == "1":
             print("  [i] Option MEDIUM_FAST sélectionnée : lora.hop_limit configuré à 3 rebonds.")
             return "MEDIUM_FAST"
         if rep == "2" or rep.lower() in ("l", "long", "long_fast"):
-            print("  [i] Option LONG_FAST sélectionnée : lora.hop_limit configuré à 5 rebonds.")
+            print("  [i] Option LONG_FAST sélectionnée : lora.hop_limit configuré à 5 rebonds (hors Netiquette).")
             return "LONG_FAST"
 
 

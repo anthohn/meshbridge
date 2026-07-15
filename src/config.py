@@ -30,8 +30,9 @@ WEB_MAX_REDIRECTS = 3
 QUEUE_MAX = 5
 
 # --- IA locale (Ollama) ---
-OLLAMA_URL   = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "llama3.2:1b"
+OLLAMA_URL       = "http://localhost:11434/api/generate"
+OLLAMA_MODEL     = "llama3.2:1b"
+OLLAMA_TIMEOUT_S = 60             # un petit modèle sur Pi peut être lent
 
 # --- IA cloud (Gemini) ---
 GEMINI_KEY       = os.environ.get("GEMINI_API_KEY", "")
@@ -58,9 +59,9 @@ BLE_RECONNECT_MAX_S = 60     # plafond du délai de retry
 AI_MODE = "auto"
 
 # --- Comportement ---
-# Accusé de réception immédiat ("⏳") pour les commandes lentes.
-# Désactivé par défaut : chaque accusé = une émission radio en plus
-# (consomme le budget légal des 10 % d'airtime/heure). Passe à True
-# si tu préfères le confort du feedback immédiat.
-SEND_ACK = False
+# Accusé de réception immédiat ("⏳") pour les commandes lentes : sans
+# feedback pendant 30-60 s, l'utilisateur tend à renvoyer sa commande —
+# ce qui coûte plus d'airtime que l'ACK (~20 octets, négligeable à un
+# rythme humain). Passer à False pour économiser chaque émission.
+SEND_ACK = True
 ACK_TEXT = "⏳ traitement…"

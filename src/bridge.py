@@ -44,19 +44,26 @@ _iface = {"handle": None}
 # Événement levé par pubsub quand la connexion tombe → réveille main()
 _connection_lost = threading.Event()
 
+# Dernière réponse non émise (BLE tombé pendant l'envoi) : un seul slot,
+# la plus récente gagne. main() la rejoue après reconnexion — une réponse
+# a coûté 30-60 s d'IA, la perdre obligerait l'utilisateur à tout refaire.
+_unsent = {"reply": None}
 
-def safe_send(text: str, channel: int) -> None:
-    """Émission BLE sérialisée. Ignore silencieusement si déco (main relance)."""
+
+def safe_send(text: str, channel: int) -> bool:
+    """Émission BLE sérialisée. Renvoie False si l'envoi a échoué (déco)."""
     iface = _iface["handle"]
     if iface is None:
         log.warning(f"envoi ignoré (pas d'interface) : {text[:40]!r}")
-        return
+        return False
     try:
         with _send_lock:
             iface.sendText(text, channelIndex=channel)
+        return True
     except Exception as e:
         log.error(f"sendText a échoué : {e}")
         _connection_lost.set()
+        return False
 
 
 def worker() -> None:
@@ -67,9 +74,12 @@ def worker() -> None:
             t0 = time.time()
             response = dispatch(verb, arg)
             dt = time.time() - t0
-            safe_send(response, channel)
-            n = len(response.encode("utf-8"))
-            log.info(f"[OUT] ch{channel} /{verb} → {n} o en {dt:.1f}s")
+            if safe_send(response, channel):
+                n = len(response.encode("utf-8"))
+                log.info(f"[OUT] ch{channel} /{verb} → {n} o en {dt:.1f}s")
+            else:
+                _unsent["reply"] = (response, channel)
+                log.warning(f"[OUT] /{verb} : BLE indisponible — réponse mise en attente")
         except Exception as e:
             log.error(f"worker : {e}")
         finally:
@@ -173,6 +183,14 @@ def main() -> None:
             delay = config.BLE_RECONNECT_MIN_S
             # Liste générée depuis le registre : toujours à jour
             log.info("Prêt. Commandes : " + " ".join("/" + n for n in COMMANDS))
+
+            # Rejoue l'éventuelle réponse restée en rade pendant la coupure.
+            # (Si l'envoi échoue encore, _connection_lost est relevé et le
+            # slot est conservé pour le prochain cycle.)
+            pending = _unsent["reply"]
+            if pending and safe_send(*pending):
+                _unsent["reply"] = None
+                log.info("[BLE] réponse en attente renvoyée")
 
             # On dort jusqu'à ce qu'une déconnexion soit signalée
             _connection_lost.wait()

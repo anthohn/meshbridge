@@ -12,7 +12,7 @@ import datetime
 import ipaddress
 from dataclasses import dataclass
 from typing import Callable
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, quote
 
 import requests
 
@@ -46,7 +46,8 @@ def cmd_ping(arg: str, mode: str) -> Reply:
 
 def cmd_meteo(arg: str, mode: str) -> Reply:
     ville = arg.strip() or "Geneve"
-    url = f"https://wttr.in/{ville}?format=%l:+%c+%t+%w+%p&m"
+    # quote() : une ville contenant "?", "#" ou "&" ne doit pas détourner l'URL
+    url = f"https://wttr.in/{quote(ville)}?format=%l:+%c+%t+%w+%p&m"
     r = requests.get(url, timeout=config.HTTP_TIMEOUT)
     r.raise_for_status()
     return Reply(r.text.strip())   # source directe (API), pas d'IA
@@ -152,6 +153,9 @@ def cmd_ask(arg: str, mode: str) -> Reply:
     text, source = compress(
         q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.",
         mode)
+    if source == "raw":
+        # Le fallback brut renverrait la question elle-même à l'envoyeur
+        return Reply("⚠️ aucune IA disponible — réessayer plus tard")
     return Reply(text, source, in_len=len(q))
 
 

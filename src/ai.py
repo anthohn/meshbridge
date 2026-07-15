@@ -14,13 +14,24 @@ log = logging.getLogger("meshbridge.ai")
 _PROMPT = ("{instruction}\nRéponds en moins de 180 caractères, sans préambule."
            "\n\n---\n{content}")
 
+# Client Gemini créé au premier appel puis réutilisé (connexion TLS comprise)
+_gemini_client = None
+
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(
+            api_key=config.GEMINI_KEY,
+            http_options={"timeout": config.GEMINI_TIMEOUT_S * 1000})
+    return _gemini_client
+
 
 def _summarize_cloud(content: str, instruction: str) -> str | None:
     if not config.GEMINI_KEY:
         return None
     try:
-        client = genai.Client(api_key=config.GEMINI_KEY,
-                              http_options={"timeout": config.GEMINI_TIMEOUT_S * 1000})
+        client = _get_gemini_client()
         prompt = _PROMPT.format(instruction=instruction, content=content[:6000])
         resp = client.models.generate_content(model=config.GEMINI_MODEL,
                                                contents=prompt)
@@ -42,7 +53,7 @@ def _summarize_local(content: str, instruction: str) -> str | None:
                                          content=content[:4000]),
                 "stream": False,
             },
-            timeout=60,
+            timeout=config.OLLAMA_TIMEOUT_S,
         )
         r.raise_for_status()
         # Un petit modèle peut renvoyer une chaîne vide → traité comme un échec
