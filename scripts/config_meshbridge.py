@@ -496,24 +496,38 @@ def show_fingerprint(cli):
 #  5. ASSISTANT INTERACTIF
 # ======================================================================
 def wait_for_single_node(cli):
-    """Attend exactement un nœud accessible en USB et l'épingle."""
+    """Attend un ou plusieurs nœuds accessibles en USB et l'épingle."""
     while True:
         ports = meshtastic_ports()
         if len(ports) == 1:
-            if not os.access(ports[0], os.R_OK | os.W_OK):
-                fail(f"Pas les droits sur {ports[0]}.")
+            port = ports[0]
+            if not os.access(port, os.R_OK | os.W_OK):
+                fail(f"Pas les droits sur {port}.")
                 print(f"\033[93m  sudo usermod -a -G dialout {getpass.getuser()}"
                       f"  (puis se déconnecter/reconnecter)\033[0m")
                 print(f"\033[93m  ou : sg dialout -c \"python3 {sys.argv[0]}\"\033[0m")
                 sys.exit(1)
-            cli.port = ports[0]
+            cli.port = port
             ok(f"Nœud détecté sur {cli.port}")
             return
-        if not ports:
-            input("\n\033[93mAucun nœud. Brancher un nœud en USB, puis Entrée…\033[0m ")
+        elif len(ports) > 1:
+            print(f"\n\033[93mPlusieurs ports série détectés :\033[0m")
+            for idx, p in enumerate(ports):
+                print(f"    {idx + 1}. {p}")
+            print(f"    {len(ports) + 1}. Rafraîchir la liste")
+            rep = input(f"  Choisir le port (1-{len(ports) + 1}, Entrée par défaut pour rafraîchir) : ").strip()
+            if rep.isdigit():
+                val = int(rep)
+                if 1 <= val <= len(ports):
+                    port = ports[val - 1]
+                    if not os.access(port, os.R_OK | os.W_OK):
+                        fail(f"Pas les droits sur {port}.")
+                        continue
+                    cli.port = port
+                    ok(f"Port sélectionné : {cli.port}")
+                    return
         else:
-            print(f"\n\033[93m{len(ports)} nœuds branchés. Un seul à la fois.\033[0m")
-            input("\033[93mEn débrancher un, puis Entrée…\033[0m ")
+            input("\n\033[93mAucun nœud. Brancher un nœud en USB, puis Entrée…\033[0m ")
 
 
 def probe_node(cli):
