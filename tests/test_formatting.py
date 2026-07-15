@@ -33,9 +33,9 @@ def test_accents_multi_octets_jamais_casses():
 
 
 def test_tag_prefixe_selon_la_source():
-    assert tag("texte", "cloud") == "⚡ texte"
-    assert tag("texte", "local") == "🏠 texte"
-    assert tag("texte", "raw") == "✂️ texte"
+    assert tag("texte", "cloud") == "[Gemini] texte"
+    assert tag("texte", "local") == "[Ollama] texte"
+    assert tag("texte", "raw") == "[Brut] texte"
 
 
 def test_tag_sans_source_ne_change_rien():

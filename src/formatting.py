@@ -4,18 +4,18 @@ Troncature au mot près (sûre en octets) + étiquette de source IA.
 """
 from config import MAX_LEN
 
-# Indique d'où vient la réponse, sans alourdir : ⚡ cloud, 🏠 local, ✂️ brut
-SOURCE_EMOJI = {
-    "cloud": "⚡",   # Gemini (rapide, en ligne)
-    "local": "🏠",   # Ollama (hors-ligne, sur le Pi)
-    "raw":   "✂️",   # aucune IA dispo → texte tronqué brut
+# Indique d'où vient la réponse en clair : [Gemini], [Ollama], [Brut]
+SOURCE_TAG = {
+    "cloud": "[Gemini]",   # Gemini (rapide, en ligne)
+    "local": "[Ollama]",   # Ollama (hors-ligne, sur le Pi)
+    "raw":   "[Brut]",     # aucune IA dispo → texte tronqué brut
 }
 
 
 def tag(text: str, source: str | None = None) -> str:
-    """Préfixe la réponse d'un emoji de source (si applicable)."""
-    emoji = SOURCE_EMOJI.get(source) if source else None
-    return f"{emoji} {text}" if emoji else text
+    """Préfixe la réponse du nom de la source IA."""
+    lbl = SOURCE_TAG.get(source) if source else None
+    return f"{lbl} {text}" if lbl else text
 
 
 def trim(text: str, limit: int = MAX_LEN) -> str:
