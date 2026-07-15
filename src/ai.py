@@ -64,12 +64,12 @@ def _summarize_local(content: str, instruction: str) -> str | None:
         return None
 
 
-def compress(content: str, instruction: str, mode: str = "auto") -> tuple[str, str]:
-    """Résume `content` selon `instruction`. Renvoie (texte, source).
+def compress(content: str, instruction: str, mode: str = "auto") -> tuple[str, str] | None:
+    """Résume `content` selon `instruction`. Renvoie (texte, source) ou None si échec.
 
-    mode : "auto"  → cascade cloud → local → brut ;
-           "cloud" → Gemini uniquement (sinon brut) ;
-           "local" → Ollama uniquement (sinon brut).
+    mode : "auto"  → cascade cloud → local → échec ;
+           "cloud" → Gemini uniquement (sinon échec) ;
+           "local" → Ollama uniquement (sinon échec).
     """
     if mode != "local":
         out = _summarize_cloud(content, instruction)
@@ -79,5 +79,5 @@ def compress(content: str, instruction: str, mode: str = "auto") -> tuple[str, s
         out = _summarize_local(content, instruction)
         if out:
             return out, "local"
-    log.warning("aucune IA disponible → fallback brut")
-    return content, "raw"
+    log.warning("aucune IA disponible")
+    return None

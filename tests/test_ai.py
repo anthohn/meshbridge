@@ -17,7 +17,7 @@ def test_auto_bascule_sur_local_si_cloud_en_panne(monkeypatch):
 def test_fallback_brut_si_tout_est_en_panne(monkeypatch):
     monkeypatch.setattr(ai, "_summarize_cloud", lambda c, i: None)
     monkeypatch.setattr(ai, "_summarize_local", lambda c, i: None)
-    assert ai.compress("contenu original", "instruction") == ("contenu original", "raw")
+    assert ai.compress("contenu original", "instruction") is None
 
 
 def test_reponse_vide_traitee_comme_une_panne(monkeypatch):
@@ -37,10 +37,10 @@ def test_mode_local_n_appelle_jamais_le_cloud(monkeypatch):
 
 
 def test_mode_cloud_en_panne_va_direct_au_brut(monkeypatch):
-    # cloud forcé : pas de détour par Ollama, on assume le brut
+    # cloud forcé : pas de détour par Ollama, on assume l'échec
     monkeypatch.setattr(ai, "_summarize_cloud", lambda c, i: None)
     monkeypatch.setattr(ai, "_summarize_local", lambda c, i: "ollama")
-    assert ai.compress("brut", "instruction", "cloud") == ("brut", "raw")
+    assert ai.compress("brut", "instruction", "cloud") is None
 
 
 def test_gemini_reponse_bloquee_renvoie_none(monkeypatch):

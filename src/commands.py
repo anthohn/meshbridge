@@ -66,9 +66,12 @@ def cmd_news(arg: str, mode: str) -> Reply:
         ).json()
         titres.append(item.get("title", ""))
     contenu = " | ".join(titres)
-    text, source = compress(contenu,
-                            "Résume ces titres d'actualité en français, format [1]...[2]...[3].",
-                            mode)
+    res = compress(contenu,
+                   "Résume ces titres d'actualité en français, format [1]...[2]...[3].",
+                   mode)
+    if not res:
+        return Reply("⚠️ IA indisponible")
+    text, source = res
     return Reply(text, source, in_len=len(contenu))
 
 
@@ -133,9 +136,12 @@ def cmd_web(arg: str, mode: str) -> Reply:
     html = re.sub(r"<style.*?</style>", " ", html, flags=re.S | re.I)
     html = re.sub(r"<[^>]+>", " ", html)
     contenu = " ".join(html.split())
-    text, source = compress(contenu,
-                            f"Résume l'essentiel de cette page web ({url}).",
-                            mode)
+    res = compress(contenu,
+                   f"Résume l'essentiel de cette page web ({url}).",
+                   mode)
+    if not res:
+        return Reply("⚠️ IA indisponible")
+    text, source = res
     return Reply(text, source, in_len=len(contenu))
 
 
@@ -150,12 +156,12 @@ def cmd_ask(arg: str, mode: str) -> Reply:
         return Reply("Usage: /ask <question>")
     now = datetime.datetime.now()
     date = f"{now.day} {_MOIS_FR[now.month - 1]} {now.year}"
-    text, source = compress(
+    res = compress(
         q, f"Nous sommes le {date}. Réponds de façon factuelle et concise.",
         mode)
-    if source == "raw":
-        # Le fallback brut renverrait la question elle-même à l'envoyeur
-        return Reply("⚠️ aucune IA disponible — réessayer plus tard")
+    if not res:
+        return Reply("⚠️ IA indisponible")
+    text, source = res
     return Reply(text, source, in_len=len(q))
 
 

@@ -8,7 +8,6 @@ from config import MAX_LEN
 SOURCE_TAG = {
     "cloud": "[Gemini]",   # Gemini (rapide, en ligne)
     "local": "[Ollama]",   # Ollama (hors-ligne, sur le Pi)
-    "raw":   "[Brut]",     # aucune IA dispo → texte tronqué brut
 }
 
 

@@ -103,9 +103,8 @@ def test_help_liste_toutes_les_commandes():
 
 # ---------------------------------------------------------------- /ask
 def test_ask_sans_ia_ne_renvoie_pas_la_question(monkeypatch):
-    # sans IA, le fallback brut de compress() est la question elle-même :
-    # la renvoyer telle quelle à l'envoyeur n'a aucun sens
-    monkeypatch.setattr(commands, "compress", lambda c, i, m: (c, "raw"))
+    # sans IA, compress() renvoie None et la commande doit répondre "IA indisponible"
+    monkeypatch.setattr(commands, "compress", lambda c, i, m: None)
     reponse = commands.cmd_ask("capitale du Japon", "auto")
     assert "capitale du Japon" not in reponse.text
     assert "IA" in reponse.text
