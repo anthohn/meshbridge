@@ -26,6 +26,9 @@ def test_node_profile_default_preset():
     
     # Vérifier que la LED d'état (heartbeat) est désactivée
     assert settings_dict.get("device.led_heartbeat_disabled") == "true"
+    
+    # Vérifier que le GPS est désactivé
+    assert settings_dict.get("position.gps_enabled") == "false"
 
 
 def test_node_profile_custom_preset():
@@ -52,6 +55,9 @@ def test_node_profile_custom_preset():
     
     # Vérifier que la LED d'état (heartbeat) est désactivée
     assert settings_dict.get("device.led_heartbeat_disabled") == "true"
+    
+    # Vérifier que le GPS est désactivé
+    assert settings_dict.get("position.gps_enabled") == "false"
 
 
 def test_standard_profile_default():
@@ -64,6 +70,9 @@ def test_standard_profile_default():
     
     # Vérifier que la LED d'état (heartbeat) est désactivée
     assert settings_dict.get("device.led_heartbeat_disabled") == "true"
+    
+    # Vérifier que le GPS est désactivé
+    assert settings_dict.get("position.gps_enabled") == "false"
 
 
 @patch("builtins.input", side_effect=[""])
