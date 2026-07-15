@@ -23,6 +23,9 @@ def test_node_profile_default_preset():
     
     # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
+    
+    # Vérifier que la LED d'état (heartbeat) est désactivée
+    assert settings_dict.get("device.led_heartbeat_disabled") == "true"
 
 
 def test_node_profile_custom_preset():
@@ -46,6 +49,9 @@ def test_node_profile_custom_preset():
     
     # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
+    
+    # Vérifier que la LED d'état (heartbeat) est désactivée
+    assert settings_dict.get("device.led_heartbeat_disabled") == "true"
 
 
 def test_standard_profile_default():
@@ -53,7 +59,11 @@ def test_standard_profile_default():
     assert profile.modem_preset == "MEDIUM_FAST"
     settings_dict = dict(profile.settings())
     assert settings_dict.get("lora.modem_preset") == "MEDIUM_FAST"
+    # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
+    
+    # Vérifier que la LED d'état (heartbeat) est désactivée
+    assert settings_dict.get("device.led_heartbeat_disabled") == "true"
 
 
 @patch("builtins.input", side_effect=[""])
