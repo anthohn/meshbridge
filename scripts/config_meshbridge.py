@@ -206,14 +206,20 @@ class MeshtasticCLI:
             time.sleep(2)
         return False
 
-    def run(self, args):
+    def run(self, args, timeout=90):
         """Exécute la CLI, avec reconnexion automatique tant que le nœud
-        reboote. Lève RuntimeError sur un échec non lié à la liaison."""
+        reboote OU cesse simplement de répondre en cours de lecture (timeout).
+        Lève RuntimeError sur un échec non lié à la liaison.
+        timeout : borne chaque tentative — sans ça, un nœud qui se tait en
+        plein --get/--info bloque le script indéfiniment (rien ne l'interrompt)."""
         for attempt in range(1, 16):
             try:
                 r = subprocess.run(self._command(args), capture_output=True,
-                                   text=True, check=True)
+                                   text=True, check=True, timeout=timeout)
                 return r.stdout + r.stderr
+            except subprocess.TimeoutExpired:
+                print(f"  \033[90m[!] Nœud injoignable (délai dépassé), nouvel essai… ({attempt}/15)\033[0m")
+                self.wait_until_ready()      # ré-épingle le port s'il a changé
             except subprocess.CalledProcessError as e:
                 out = (e.stdout or "") + (e.stderr or "") or str(e)
                 if not any(s in out.lower() for s in self.REBOOT_SIGNS):
