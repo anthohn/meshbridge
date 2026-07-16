@@ -177,13 +177,25 @@ class MeshtasticCLI:
 
     def try_run(self, args, timeout):
         """UNE tentative, sans reconnexion — pour sonder un nœud qui ne répond
-        peut-être pas. Renvoie la sortie, ou None si le nœud ne répond pas."""
+        peut-être pas. Renvoie la sortie captée (même en cas d'échec ou de
+        timeout — ex. port déjà ouvert par une autre appli, qui ne fait
+        planter la CLI qu'après avoir imprimé un avertissement), ou None si
+        rien n'a pu être capté du tout."""
+        def _text(x):
+            if x is None:
+                return ""
+            return x if isinstance(x, str) else x.decode(errors="replace")
         try:
             r = subprocess.run(self._command(args), capture_output=True,
                                text=True, timeout=timeout)
-            return r.stdout + r.stderr if r.returncode == 0 else None
+            out = r.stdout + r.stderr
+        except subprocess.TimeoutExpired as e:
+            # .stdout/.stderr peuvent rester en bytes même avec text=True :
+            # la partie captée avant le timeout n'est pas toujours décodée.
+            out = _text(e.stdout) + _text(e.stderr)
         except Exception:
             return None
+        return out or None
 
     def node_responds(self):
         """Test de vie RÉEL : le nœud répond-il au protocole ? (port présent ne
@@ -536,16 +548,22 @@ def wait_for_single_node(cli):
             input("\n\033[93mAucun nœud. Brancher un nœud en USB, puis Entrée…\033[0m ")
 
 
+PORT_BUSY_SIGN = "multiple access on port"   # texte exact renvoyé par la CLI meshtastic
+
+
 def probe_node(cli):
-    """(parle_meshtastic, version, nom_owner). Une seule interrogation, 20 s max.
-    Un handshake muet = firmware étranger (MeshCore) OU boot en cours."""
+    """(parle_meshtastic, version, nom_owner, port_occupe). Une seule
+    interrogation, 20 s max. Un handshake muet = firmware étranger (MeshCore),
+    boot en cours, OU port déjà ouvert par une autre appli (ex. l'appli
+    Meshtastic desktop) — ce dernier cas est détecté explicitement (port_occupe)."""
     out = cli.try_run(["--info"], timeout=20)
     if out and "Owner" in out:
         v = re.search(r'firmware_?version[^0-9]*(\d+\.\d+\.\d+)', out, re.I)
         o = re.search(r"^Owner\s*:\s*(.+)$", out, re.M)
         owner = re.sub(r"\s*\(.*\)$", "", o.group(1)).strip() if o else None
-        return (True, v.group(1) if v else None, owner)
-    return (False, None, None)
+        return (True, v.group(1) if v else None, owner, False)
+    busy = bool(out) and PORT_BUSY_SIGN in out.lower()
+    return (False, None, None, busy)
 
 
 def latest_stable_firmware():
@@ -687,12 +705,17 @@ def assist_node(cli):
     wait_for_single_node(cli)
 
     step("Identification du firmware…")
-    is_mesh, version, owner = probe_node(cli)
+    is_mesh, version, owner, port_busy = probe_node(cli)
     if not is_mesh:
         fail("Pas de réponse au protocole Meshtastic.")
-        print("\033[93m  • Soit le nœud démarrait encore → réessayer.\033[0m")
-        print("\033[93m  • Soit un autre firmware tourne (MeshCore ?) → le flasher :\033[0m")
-        print("\033[93m       https://flasher.meshtastic.org\033[0m")
+        if port_busy:
+            print("\033[93m  • Le port est déjà utilisé par une autre application (ex. l'appli Meshtastic desktop,")
+            print("\033[93m    un moniteur série…) — un seul programme peut parler au port à la fois.\033[0m")
+            print("\033[93m    Fermez-la puis réessayez (pas besoin de débrancher/rebrancher le nœud).\033[0m")
+        else:
+            print("\033[93m  • Soit le nœud démarrait encore → réessayer.\033[0m")
+            print("\033[93m  • Soit un autre firmware tourne (MeshCore ?) → le flasher :\033[0m")
+            print("\033[93m       https://flasher.meshtastic.org\033[0m")
         return
 
     ok(f"Firmware Meshtastic {version or '(illisible)'}")
