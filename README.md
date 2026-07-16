@@ -108,7 +108,9 @@ Le script est un **assistant** : il détecte le nœud branché en USB et guide p
 
 > **Remise à zéro complète d'une carte (rare).** Le script n'utilise volontairement PAS le `--factory-reset` du firmware : sur les cartes nRF52 (Seeed Wio Tracker), il gèle la carte en boucle de boot au lieu de la nettoyer. Il obtient le même état propre par des écritures que toute carte supporte. Si une carte est vraiment sale et doit repartir de zéro, l'effacer à la main via le [flasher Meshtastic](https://flasher.meshtastic.org) (option **Erase Flash**) puis reflasher le firmware — pour une nRF52 figée, entrer en mode DFU par un **double-appui sur RESET** (le lecteur USB « TRACKER L1 » apparaît).
 
-L'assistant propose aussi un mode **nœud standard** (option 3) : configuration conforme à la Netiquette pour un nœud qui ne fait pas partie de MeshBridge — canal public uniquement, sans PSK. Le rôle suit la règle de la Netiquette : `CLIENT_MUTE` en zone dense ou pour tout nœud transporté, `CLIENT` en zone peu couverte (le nœud aide alors à relayer le mesh).
+L'assistant propose aussi un mode **nœud standard** (option 3) : configuration conforme à la Netiquette pour un nœud qui ne fait pas partie de MeshBridge — canal public uniquement, sans PSK. Le rôle suit la règle de la Netiquette : `CLIENT_MUTE` en zone dense ou pour tout nœud transporté, `CLIENT` en zone peu couverte (le nœud aide alors à relayer le mesh). Pour un nœud standard, un emoji optionnel peut être ajouté au nom long (purement cosmétique, visible dans le NodeInfo).
+
+Une fois le rôle et le preset choisis, l'assistant demande **Déployer** ou **Vérifier seulement** : ce second mode relit le nœud et le compare au profil choisi sans rien écrire — pratique pour contrôler la configuration d'un nœud déjà déployé.
 
 #### Dépannage (Linux)
 

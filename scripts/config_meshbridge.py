@@ -604,11 +604,33 @@ def ask_role():
     long_name = ""
     while not long_name:
         long_name = input("  Nom long (neutre de préférence) : ").strip()
+    emoji = ask_emoji()
+    if emoji:
+        long_name = f"{long_name} {emoji}"
     short_name = ""
     while not 2 <= len(short_name) <= 4:
         short_name = input("  Nom court (2 à 4 caractères) : ").strip()
     mobile = ask_yes_no("  Nœud mobile (sac, voiture) plutôt que fixe ?")
     return standard_profile(long_name, short_name, mobile, choose_standard_role(mobile))
+
+
+def ask_emoji():
+    """Emoji optionnel ajouté au nom long (cosmétique, visible dans le NodeInfo
+    de tous les nœuds — n'affecte pas le nom court, réservé au firmware)."""
+    print("  Ajouter un emoji à ce nom ? (visible dans le NodeInfo)")
+    print("    1. Aucun (Entrée)")
+    print("    2. 🥾 Randonneur")
+    print("    3. 🚗 Véhicule")
+    print("    4. 🏠 Fixe")
+    print("    5. 📡 Relais")
+    print("    6. Autre (saisir un emoji)")
+    presets = {"2": "🥾", "3": "🚗", "4": "🏠", "5": "📡"}
+    c = input("  Choix (1-6, Entrée = 1) : ").strip()
+    if c in presets:
+        return presets[c]
+    if c == "6":
+        return input("  Emoji : ").strip()
+    return ""
 
 
 def ask_modem_preset():
@@ -625,6 +647,33 @@ def ask_modem_preset():
         if rep == "2" or rep.lower() in ("l", "long", "long_fast"):
             print("  [i] Option LONG_FAST sélectionnée : lora.hop_limit configuré à 5 rebonds (hors Netiquette).")
             return "LONG_FAST"
+
+
+def ask_action():
+    """Menu d'action : déployer (écrit) ou vérifier seulement (aucune écriture)."""
+    print("  Que faire avec ce profil ?")
+    print("    1. Déployer (écrit la configuration sur le nœud)")
+    print("    2. Vérifier seulement (aucune écriture, compare au profil choisi)")
+    while True:
+        c = input("  Choix (1/2, Entrée = 1) : ").strip()
+        if not c or c == "1":
+            return "deploy"
+        if c == "2":
+            return "check"
+
+
+def check_only(cli, profile):
+    """Relit le nœud et le compare au profil choisi, sans rien écrire."""
+    try:
+        conforme, _ = verify(cli, profile)
+    except Exception as e:
+        fail(f"Vérification interrompue : {e}")
+        return
+    print("")
+    if conforme:
+        print(f"  \033[92m✅ '{profile.long_name}' déjà conforme au profil choisi.\033[0m")
+    else:
+        print(f"  \033[91m⚠ '{profile.long_name}' NE correspond PAS au profil choisi (voir ci-dessus).\033[0m")
 
 
 def assist_node(cli):
@@ -650,6 +699,9 @@ def assist_node(cli):
     profile = ask_role()
     preset = ask_modem_preset()
     profile = replace(profile, modem_preset=preset)
+    if ask_action() == "check":
+        check_only(cli, profile)
+        return
     deployed = deploy(cli, profile)
 
     if profile.long_name == MESHBRIDGE_NODES["Maison"].long_name and deployed \
