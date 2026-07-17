@@ -134,16 +134,53 @@ ENUMS = {
 }
 
 # ======================================================================
-#  2. CONSOLE
+#  2. CONSOLE — tout l'affichage passe par ces helpers : glyphes de
+#     statut à largeur fixe, un seul format de prompt pour tous les menus.
 # ======================================================================
-def step(m):  print(f"  \033[90m-> {m}\033[0m")
-def ok(m):    print(f"  \033[92m[OK]\033[0m    {m}")
-def fail(m):  print(f"  \033[91m[ÉCHEC]\033[0m {m}")
-def title(m): print(f"\n\033[96m{m}\033[0m")
+GRIS, VERT, ROUGE, JAUNE, BLEU, BLANC, FIN = ("\033[90m", "\033[92m", "\033[91m",
+                                              "\033[93m", "\033[94m", "\033[97m", "\033[0m")
 
-def ask_yes_no(question, default=True):
-    rep = input(f"{question} [{'O/n' if default else 'o/N'}] : ").strip().lower()
-    return default if not rep else rep in ("o", "oui", "y", "yes")
+def step(m):    print(f"  {GRIS}→  {m}{FIN}")
+def ok(m):      print(f"  {VERT}✓{FIN}  {m}")
+def fail(m):    print(f"  {ROUGE}✗{FIN}  {m}")
+def info(m):    print(f"  {BLEU}i{FIN}  {m}")
+def warn(m):    print(f"  {JAUNE}!  {m}{FIN}")
+def section(t): print(f"\n{BLEU}── {t} {'─' * max(0, 44 - len(t))}{FIN}\n")
+
+
+def banner():
+    l1, l2 = "MeshBridge · assistant de configuration", "Netiquette Suisse — janvier 2026"
+    print(f"\n{BLEU}╭{'─' * 46}╮{FIN}")
+    print(f"{BLEU}│{FIN}  {BLANC}{l1:<44}{FIN}{BLEU}│{FIN}")
+    print(f"{BLEU}│{FIN}  {GRIS}{l2:<44}{FIN}{BLEU}│{FIN}")
+    print(f"{BLEU}╰{'─' * 46}╯{FIN}")
+
+
+def menu(titre, options, note=None):
+    """Le seul moteur de menu du script : options alignées, prompt et
+    message d'erreur identiques partout — un choix explicite est requis.
+    options = [(label, description), …] ; renvoie le numéro choisi (1-N)."""
+    section(titre)
+    if note:
+        print(f"  {GRIS}{note}{FIN}\n")
+    aligne = any(desc for _, desc in options)   # colonne alignée seulement si des descriptions existent
+    larg = max(len(label) for label, _ in options)
+    for i, (label, desc) in enumerate(options, 1):
+        label_aff = f"{label:<{larg}}" if aligne else label
+        suffixe = f"  {GRIS}{desc}{FIN}" if desc else ""
+        print(f"  {BLEU}{i} ›{FIN} {BLANC}{label_aff}{FIN}{suffixe}")
+    borne = f"1-{len(options)}"
+    while True:
+        c = input(f"\n  Choix {borne} : ").strip()
+        if c.isdigit() and 1 <= int(c) <= len(options):
+            return int(c)
+        warn(f"Saisie non reconnue — attendu : {borne}.")
+
+
+def ask_yes_no(question):
+    """Oui/Non via le MÊME moteur que les autres menus : un seul type
+    d'interaction dans tout le script (toujours un numéro à saisir)."""
+    return menu(question, [("Oui", ""), ("Non", "")]) == 1
 
 # ======================================================================
 #  3. LIAISON SÉRIE — toute la communication avec le nœud passe par ici
@@ -231,7 +268,7 @@ class MeshtasticCLI:
                                    text=True, check=True, timeout=timeout)
                 return r.stdout + r.stderr
             except subprocess.TimeoutExpired:
-                print(f"  \033[90m[!] Nœud injoignable (délai dépassé), nouvel essai… ({attempt}/15)\033[0m")
+                step(f"Nœud injoignable (délai dépassé), nouvel essai… ({attempt}/15)")
                 self.wait_until_ready()      # ré-épingle le port s'il a changé
             except subprocess.CalledProcessError as e:
                 out = (e.stdout or "") + (e.stderr or "") or str(e)
@@ -240,8 +277,8 @@ class MeshtasticCLI:
                 if attempt == 1:
                     cause = next((l.strip() for l in out.splitlines()
                                   if any(s in l.lower() for s in self.REBOOT_SIGNS)), "")
-                    print(f"  \033[90m(cause : {cause[:88]})\033[0m")
-                print(f"  \033[90m[!] Nœud injoignable (reboot ?), nouvel essai… ({attempt}/15)\033[0m")
+                    print(f"  {GRIS}(cause : {cause[:88]}){FIN}")
+                step(f"Nœud injoignable (reboot ?), nouvel essai… ({attempt}/15)")
                 self.wait_until_ready()      # ré-épingle le port s'il a changé
             except FileNotFoundError:
                 raise RuntimeError("CLI 'meshtastic' introuvable : pip install meshtastic")
@@ -264,8 +301,8 @@ class MeshtasticCLI:
             # Certaines cartes nRF52 (ex. Wio Tracker) restent allumées mais
             # muettes après une écriture : seul un redémarrage au bouton les
             # ranime. On donne sa chance à l'utilisateur avant d'abandonner.
-            print("\033[93m  Le nœud ne répond plus (certaines cartes gèlent sur une écriture).\033[0m")
-            input("\033[93m  Le redémarrer avec son bouton (appui long), puis Entrée… \033[0m")
+            warn("Le nœud ne répond plus (certaines cartes gèlent sur une écriture).")
+            input(f"  {JAUNE}Le redémarrer avec son bouton (appui long), puis Entrée… {FIN}")
             if not self.wait_until_ready(ready_timeout):
                 raise RuntimeError("nœud injoignable après écriture (reboot trop long ? câble data ?)")
 
@@ -362,11 +399,11 @@ def deploy(cli, profile):
             show_fingerprint(cli)
         print("")
         if conforme:
-            print(f"  \033[92m✅ '{profile.long_name}' déployé et vérifié.\033[0m")
-            print("  \033[90m• Note Wio Tracker/nRF52 : si les boutons ou l'écran semblent figés,")
-            print("    débranchez le câble USB et faites un appui court sur RESET.\033[0m")
+            print(f"  {VERT}✓ '{profile.long_name}' déployé et vérifié.{FIN}")
+            print(f"  {GRIS}Note Wio Tracker/nRF52 : si les boutons ou l'écran semblent figés,")
+            print(f"    débrancher le câble USB et faire un appui court sur RESET.{FIN}")
         else:
-            print(f"  \033[91m⚠ '{profile.long_name}' déployé mais NON conforme.\033[0m")
+            print(f"  {ROUGE}✗ '{profile.long_name}' déployé mais NON conforme.{FIN}")
         return conforme
     except Exception as e:
         fail(f"Déploiement interrompu : {e}")
@@ -474,7 +511,7 @@ def verify(cli, profile):
     rejouer par fix_gaps — l'identité y figure sous le pseudo-champ 'owner'.
     (gaps vide si seuls les canaux posent problème : pas corrigeable champ
     par champ.)"""
-    title("Vérification (relecture réelle des champs)")
+    section("Vérification (relecture réelle)")
     wanted = profile.settings()
     actual = read_settings(cli, [field for field, _ in wanted])
     results, gaps = [], []
@@ -494,20 +531,21 @@ def verify(cli, profile):
     passed, total = sum(results), len(results)
     print("")
     if passed == total:
-        print(f"  \033[92m✅ {passed}/{total} — nœud conforme.\033[0m")
+        print(f"  {VERT}✓ {passed}/{total} — nœud conforme.{FIN}")
     else:
-        print(f"  \033[91m❌ {passed}/{total} — {total - passed} à corriger ci-dessus.\033[0m")
+        print(f"  {ROUGE}✗ {passed}/{total} — {total - passed} écart(s) ci-dessus.{FIN}")
     return passed == total, gaps
 
 
 def show_fingerprint(cli):
     """Empreinte du canal (PAS l'URL : elle contient le PSK en clair)."""
-    title("Empreinte des canaux (doit être IDENTIQUE entre Pierre et Paul)")
+    section("Empreinte des canaux")
+    print(f"  {GRIS}Doit être identique entre Pierre et Paul.{FIN}")
     for line in cli.run(["--info"]).splitlines():
         if "Complete URL" in line:
             m = re.search(r"https://\S+", line)
             if m:
-                print(f"  Empreinte : \033[97m{hashlib.sha256(m.group(0).encode()).hexdigest()[:12]}\033[0m")
+                print(f"  Empreinte : {BLANC}{hashlib.sha256(m.group(0).encode()).hexdigest()[:12]}{FIN}")
                 return
     fail("URL de canal introuvable")
 
@@ -522,31 +560,25 @@ def wait_for_single_node(cli):
             port = ports[0]
             if not os.access(port, os.R_OK | os.W_OK):
                 fail(f"Pas les droits sur {port}.")
-                print(f"\033[93m  sudo usermod -a -G dialout {getpass.getuser()}"
-                      f"  (puis se déconnecter/reconnecter)\033[0m")
-                print(f"\033[93m  ou : sg dialout -c \"python3 {sys.argv[0]}\"\033[0m")
+                warn(f"sudo usermod -a -G dialout {getpass.getuser()}  (puis se déconnecter/reconnecter)")
+                warn(f"ou : sg dialout -c \"python3 {sys.argv[0]}\"")
                 sys.exit(1)
             cli.port = port
             ok(f"Nœud détecté sur {cli.port}")
             return
         elif len(ports) > 1:
-            print(f"\n\033[93mPlusieurs ports série détectés :\033[0m")
-            for idx, p in enumerate(ports):
-                print(f"    {idx + 1}. {p}")
-            print(f"    {len(ports) + 1}. Rafraîchir la liste")
-            rep = input(f"  Choisir le port (1-{len(ports) + 1}, Entrée par défaut pour rafraîchir) : ").strip()
-            if rep.isdigit():
-                val = int(rep)
-                if 1 <= val <= len(ports):
-                    port = ports[val - 1]
-                    if not os.access(port, os.R_OK | os.W_OK):
-                        fail(f"Pas les droits sur {port}.")
-                        continue
-                    cli.port = port
-                    ok(f"Port sélectionné : {cli.port}")
-                    return
+            options = [(p, "") for p in ports] + [("Rafraîchir la liste", "")]
+            c = menu("Plusieurs ports série détectés", options)
+            if c < len(options):
+                port = ports[c - 1]
+                if not os.access(port, os.R_OK | os.W_OK):
+                    fail(f"Pas les droits sur {port}.")
+                    continue
+                cli.port = port
+                ok(f"Port sélectionné : {cli.port}")
+                return
         else:
-            input("\n\033[93mAucun nœud. Brancher un nœud en USB, puis Entrée…\033[0m ")
+            input(f"\n  {JAUNE}Aucun nœud. Brancher un nœud en USB, puis Entrée…{FIN} ")
 
 
 PORT_BUSY_SIGN = "multiple access on port"   # texte exact renvoyé par la CLI meshtastic
@@ -581,7 +613,7 @@ def latest_stable_firmware():
 
 
 def enable_ble_pierre(cli):
-    title("Activation du BLE sur Pierre")
+    section("Activation du BLE sur Pierre")
     pin = (os.environ.get("PIERRE_BLE_PIN") or "").strip()
     if not re.fullmatch(r"\d{6}", pin):
         fail("PIERRE_BLE_PIN doit être un PIN à 6 chiffres dans .env")
@@ -592,7 +624,7 @@ def enable_ble_pierre(cli):
         "--set", "bluetooth.fixed_pin", pin,
     ], f"Activation BLE (PIN {pin}, défini dans .env)…")
     ok("BLE activé sur Pierre.")
-    print("\n\033[93mCôté Raspberry Pi :\033[0m")
+    print(f"\n  {JAUNE}Côté Raspberry Pi :{FIN}")
     print("  1) Débrancher Pierre, l'alimenter près de la fenêtre.")
     print("  2) bluetoothctl → scan on → repérer 'Meshtastic_*'")
     print(f"  3) pair / trust avec le PIN {pin}")
@@ -605,27 +637,25 @@ def choose_standard_role(mobile):
     zone peu couverte → CLIENT (le nœud aide à relayer)."""
     if mobile:
         return "CLIENT_MUTE"
-    dense = ask_yes_no("  Le mesh est-il déjà dense ici (>50 nœuds dans l'app) ?")
-    if dense:
-        return "CLIENT_MUTE"
-    print("  \033[90m(zone peu couverte → CLIENT : le nœud aidera à relayer)\033[0m")
-    return "CLIENT"
+    dense = menu("Densité du mesh ici", [
+        ("Dense", "déjà beaucoup de nœuds (>50 dans l'app)"),
+        ("Peu couvert", "peu de nœuds — ce nœud aidera à relayer"),
+    ]) == 1
+    return "CLIENT_MUTE" if dense else "CLIENT"
 
 
 def ask_role():
     """Menu de rôle : renvoie le NodeProfile choisi."""
-    print("  Quel rôle attribuer à ce nœud ?")
-    print(f"    1. {MESHBRIDGE_NODES['Maison'].long_name}  — fixe, relié au Raspberry Pi (passerelle)")
-    print(f"    2. {MESHBRIDGE_NODES['Portable'].long_name}  — portable, accompagne le téléphone")
-    print("    3. Nœud standard  — hors MeshBridge, conforme Netiquette (canal public)")
-    while True:
-        c = input("  Choix (1/2/3) : ").strip()
-        if c in ("1", "2", "3"):
-            break
-    if c == "1":
+    c = menu("Rôle du nœud", [
+        (MESHBRIDGE_NODES["Maison"].long_name, "fixe · passerelle vers le Raspberry Pi"),
+        (MESHBRIDGE_NODES["Portable"].long_name, "portable · accompagne le téléphone"),
+        ("Nœud standard", "hors MeshBridge · Netiquette, canal public"),
+    ])
+    if c == 1:
         return MESHBRIDGE_NODES["Maison"]
-    if c == "2":
+    if c == 2:
         return MESHBRIDGE_NODES["Portable"]
+    section("Nœud standard")
     long_name = ""
     while not long_name:
         long_name = input("  Nom long (neutre de préférence) : ").strip()
@@ -635,10 +665,13 @@ def ask_role():
         if len(s.encode()) > 4:
             # len() compte les code points, pas les octets : un drapeau 🇨🇭 (2 code
             # points, 8 octets) passerait le test 2-4 mais serait refusé par le nœud.
-            print("  \033[93mTrop long pour le firmware (4 octets max) — le nœud le refuserait.\033[0m")
+            warn("Trop long pour le firmware (4 octets max) — le nœud le refuserait.")
         elif 2 <= len(s) <= 4:
             short_name = s
-    mobile = ask_yes_no("  Nœud mobile (sac, voiture) plutôt que fixe ?")
+    mobile = menu("Usage du nœud", [
+        ("Transporté", "sur soi, dans un sac, en voiture…"),
+        ("Fixe", "reste toujours au même endroit"),
+    ]) == 1
     return standard_profile(long_name, short_name, mobile, choose_standard_role(mobile))
 
 
@@ -646,18 +679,18 @@ def ask_emoji():
     """Emoji optionnel utilisé comme NOM COURT : les applis Meshtastic
     l'affichent comme avatar du nœud. Limite firmware : 4 octets UTF-8 —
     les emoji composés (drapeaux, variantes) débordent et sont refusés.
-    (Sur l'écran OLED des cartes, l'emoji s'affichera mal : compromis assumé.)"""
-    print("  Utiliser un emoji comme nom court ? (affiché comme avatar dans l'appli)")
-    print("    1. Aucun (Entrée) — saisir un nom court classique")
-    print("    2. 🥾 Randonneur")
-    print("    3. 🚗 Véhicule")
-    print("    4. 🏠 Fixe")
-    print("    5. 📡 Relais")
-    print("    6. Autre (saisir un emoji)")
+    (Sur l'écran OLED des cartes, l'emoji s'affichera mal : compromis assumé.)
+    Question libre — un emoji tapé directement est accepté — donc pas de
+    menu() ici, mais les mêmes codes visuels et le même format de prompt."""
+    print(f"  Un emoji comme nom court ? {GRIS}(devient l'avatar du nœud dans l'appli){FIN}")
+    opts = [("Aucun", "saisir un nom court classique"), ("🥾", "randonneur"),
+            ("🚗", "véhicule"), ("🏠", "fixe"), ("📡", "relais"), ("Autre", "taper un emoji")]
+    for i, (label, desc) in enumerate(opts, 1):
+        print(f"  {BLEU}{i} ›{FIN} {BLANC}{label:<5}{FIN}  {GRIS}{desc}{FIN}")
     presets = {"2": "🥾", "3": "🚗", "4": "🏠", "5": "📡"}
     while True:
-        c = input("  Choix (1-6, Entrée = 1) : ").strip()
-        if not c or c == "1":
+        c = input("\n  Choix 1-6 : ").strip()
+        if c == "1":
             return ""
         if c in presets:
             return presets[c]
@@ -666,38 +699,43 @@ def ask_emoji():
         if c and not c.isascii():        # emoji tapé directement (menu ou option 6)
             if len(c.encode()) <= 4:
                 return c
-            print("  \033[93mEmoji trop long pour le firmware (4 octets max) — drapeaux et variantes ne tiennent pas.\033[0m")
+            warn("Emoji trop long pour le firmware (4 octets max) — drapeaux et variantes ne tiennent pas.")
         else:
-            print("  \033[93mChoix non reconnu.\033[0m")
+            warn("Saisie non reconnue — attendu : 1-6 ou un emoji.")
 
 
 def ask_modem_preset():
     """Demande à l'utilisateur de choisir le modem preset. Les deux nœuds
     MeshBridge doivent recevoir le même (sinon les radios ne s'entendent plus)."""
-    print("  Quel modem preset utiliser ? (le même pour les deux nœuds MeshBridge)")
-    print("    1. MEDIUM_FAST (norme Netiquette Suisse — 3 rebonds)")
-    print("    2. LONG_FAST (HORS Netiquette — majoritaire en pratique, portée maximale — 5 rebonds)")
-    while True:
-        rep = input("  Choix (1/2, Entrée par défaut) : ").strip()
-        if not rep or rep == "1":
-            print("  [i] Option MEDIUM_FAST sélectionnée : lora.hop_limit configuré à 3 rebonds.")
-            return "MEDIUM_FAST"
-        if rep == "2" or rep.lower() in ("l", "long", "long_fast"):
-            print("  [i] Option LONG_FAST sélectionnée : lora.hop_limit configuré à 5 rebonds (hors Netiquette).")
-            return "LONG_FAST"
+    c = menu("Modem preset", [
+        ("MEDIUM_FAST", "norme Netiquette Suisse · 3 rebonds"),
+        ("LONG_FAST", "hors Netiquette · majoritaire en pratique, portée maximale · 5 rebonds"),
+    ], note="Le même pour les deux nœuds MeshBridge, sinon les radios ne s'entendent plus.")
+    if c == 1:
+        info("MEDIUM_FAST : lora.hop_limit configuré à 3 rebonds.")
+        return "MEDIUM_FAST"
+    info("LONG_FAST : lora.hop_limit configuré à 5 rebonds (hors Netiquette).")
+    return "LONG_FAST"
+
+
+def show_profile(profile):
+    """Récapitulatif du profil retenu, juste avant de choisir quoi en faire."""
+    section("Profil retenu")
+    hop = "5" if profile.modem_preset == "LONG_FAST" else "3"
+    canaux = "0 public · 1 MeshBridge" if profile.meshbridge else "0 public"
+    print(f"  {GRIS}{'Nom':<8}{FIN}{profile.long_name} ({profile.short_name})")
+    print(f"  {GRIS}{'Rôle':<8}{FIN}{profile.role} · rebroadcast {profile.rebroadcast}")
+    print(f"  {GRIS}{'Radio':<8}{FIN}{profile.modem_preset} · EU_868 · {hop} rebonds")
+    print(f"  {GRIS}{'Canaux':<8}{FIN}{canaux}")
 
 
 def ask_action():
-    """Menu d'action : déployer (écrit) ou vérifier seulement (aucune écriture)."""
-    print("  Que faire avec ce profil ?")
-    print("    1. Déployer (écrit la configuration sur le nœud)")
-    print("    2. Vérifier seulement (compare au profil choisi ; ne corrige qu'avec accord)")
-    while True:
-        c = input("  Choix (1/2, Entrée = 1) : ").strip()
-        if not c or c == "1":
-            return "deploy"
-        if c == "2":
-            return "check"
+    """Menu d'action : déployer (écrit) ou vérifier seulement."""
+    c = menu("Action", [
+        ("Déployer", "écrit la configuration sur le nœud"),
+        ("Vérifier seulement", "compare au profil · ne corrige qu'avec accord"),
+    ])
+    return "deploy" if c == 1 else "check"
 
 
 def check_only(cli, profile):
@@ -711,23 +749,23 @@ def check_only(cli, profile):
         return
     print("")
     if conforme:
-        print(f"  \033[92m✅ '{profile.long_name}' déjà conforme au profil choisi.\033[0m")
+        print(f"  {VERT}✓ '{profile.long_name}' déjà conforme au profil choisi.{FIN}")
         return
-    print(f"  \033[91m⚠ '{profile.long_name}' NE correspond PAS au profil choisi (voir ci-dessus).\033[0m")
+    print(f"  {ROUGE}✗ '{profile.long_name}' ne correspond pas au profil choisi (voir ci-dessus).{FIN}")
     if not gaps:
         # Seuls les canaux sont en écart : pas corrigeable champ par champ.
-        print("  \033[93mÉcart sur les canaux : relancer en mode Déployer pour les remettre à neuf.\033[0m")
+        warn("Écart sur les canaux : relancer en mode Déployer pour les remettre à neuf.")
         return
-    if not ask_yes_no("  Corriger ces écarts maintenant (écrit sur le nœud) ?"):
+    if not ask_yes_no("Corriger ces écarts maintenant (écrit sur le nœud) ?"):
         return
     try:
         fix_gaps(cli, profile, gaps)
         conforme, _ = verify(cli, profile)
         print("")
         if conforme:
-            print(f"  \033[92m✅ '{profile.long_name}' corrigé et conforme.\033[0m")
+            print(f"  {VERT}✓ '{profile.long_name}' corrigé et conforme.{FIN}")
         else:
-            print(f"  \033[91m⚠ Toujours NON conforme — relancer en mode Déployer.\033[0m")
+            print(f"  {ROUGE}✗ Toujours non conforme — relancer en mode Déployer.{FIN}")
     except Exception as e:
         fail(f"Correction interrompue : {e}")
 
@@ -741,33 +779,33 @@ def assist_node(cli):
     if not is_mesh:
         fail("Pas de réponse au protocole Meshtastic.")
         if port_busy:
-            print("\033[93m  • Le port est déjà utilisé par une autre application (ex. l'appli Meshtastic desktop,")
-            print("\033[93m    un moniteur série…) — un seul programme peut parler au port à la fois.\033[0m")
-            print("\033[93m    Fermez-la puis réessayez (pas besoin de débrancher/rebrancher le nœud).\033[0m")
+            warn("Le port est déjà utilisé par une autre application (appli Meshtastic")
+            warn("desktop, moniteur série…) — un seul programme peut lui parler à la fois.")
+            warn("La fermer puis réessayer (pas besoin de débrancher le nœud).")
         else:
-            print("\033[93m  • Soit le nœud démarrait encore → réessayer.\033[0m")
-            print("\033[93m  • Soit un autre firmware tourne (MeshCore ?) → le flasher :\033[0m")
-            print("\033[93m       https://flasher.meshtastic.org\033[0m")
+            warn("Soit le nœud démarrait encore → réessayer.")
+            warn("Soit un autre firmware tourne (MeshCore ?) → le flasher :")
+            warn("    https://flasher.meshtastic.org")
         return
 
     ok(f"Firmware Meshtastic {version or '(illisible)'}")
     latest = latest_stable_firmware()
     if version and latest and tuple(map(int, version.split("."))) < tuple(map(int, latest.split("."))):
-        print(f"  \033[93m[i] {version} < dernière stable {latest} — mise à jour conseillée")
-        print(f"      via https://flasher.meshtastic.org\033[0m")
-
-    print(f"\n  Nom actuel du nœud : {owner or 'inconnu'}.")
+        warn(f"{version} < dernière stable {latest} — mise à jour conseillée via https://flasher.meshtastic.org")
+    info(f"Nom actuel du nœud : {owner or 'inconnu'}")
     profile = ask_role()
     preset = ask_modem_preset()
     profile = replace(profile, modem_preset=preset)
+    show_profile(profile)
     if ask_action() == "check":
         check_only(cli, profile)
         return
     deployed = deploy(cli, profile)
 
-    if profile.long_name == MESHBRIDGE_NODES["Maison"].long_name and deployed \
-            and ask_yes_no("\nActiver le BLE sur Pierre maintenant ?"):
-        enable_ble_pierre(cli)
+    if profile.long_name == MESHBRIDGE_NODES["Maison"].long_name and deployed:
+        print("")
+        if ask_yes_no("Activer le BLE sur Pierre maintenant ?"):
+            enable_ble_pierre(cli)
 
 
 def load_env():
@@ -776,17 +814,14 @@ def load_env():
     env_path = os.path.join(root_dir, ".env")
     if os.path.exists(env_path):
         load_dotenv(dotenv_path=env_path)
-        print(f"\033[90m[.env] Variables chargées depuis {env_path}\033[0m")
+        print(f"{GRIS}.env chargé depuis {env_path}{FIN}")
     else:
-        print(f"\033[93m[!] .env introuvable ({env_path}) — copier .env.example en .env.\033[0m")
+        warn(f".env introuvable ({env_path}) — copier .env.example en .env.")
 
 
 def main():
     load_env()
-    print("\033[96m=================================================\033[0m")
-    print("   \033[97mASSISTANT DE CONFIGURATION MESHBRIDGE\033[0m")
-    print("   \033[90mNetiquette Suisse — Janvier 2026\033[0m")
-    print("\033[96m=================================================\033[0m")
+    banner()
 
     if not os.environ.get("MESHBRIDGE_PSK", "").strip():
         fail("MESHBRIDGE_PSK manquant dans .env"); sys.exit(1)
@@ -796,9 +831,10 @@ def main():
     cli = MeshtasticCLI()
     while True:
         assist_node(cli)
-        if not ask_yes_no("\nConfigurer un autre nœud ?"):
+        print("")
+        if not ask_yes_no("Configurer un autre nœud ?"):
             break
-        input("Débrancher le nœud actuel, brancher l'autre, puis Entrée… ")
+        input(f"  {GRIS}Débrancher le nœud actuel, brancher l'autre, puis Entrée…{FIN} ")
     print("\nTerminé.")
 
 
