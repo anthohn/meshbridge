@@ -231,7 +231,7 @@ La suite tourne aussi automatiquement sur GitHub Actions à chaque push.
 
 Configuration alignée sur la [*Netiquette Meshtastic Suisse*](docs/netiquette-meshtastic-suisse-janvier-2026.pdf) (version janvier 2026), document communautaire trilingue (DE/FR/EN) inclus dans `docs/` pour référence : preset `MEDIUM_FAST` (standard suisse depuis fin 2025), rôle `CLIENT_MUTE` (recommandé en zone dense), hop limit 3 (« idéal 3 ou 4 »), intervalles de diffusion préconisés (NodeInfo 3 h, position 6 h mobile / 24 h fixe, Smart Position désactivé, télémétrie réduite à 72 h), MQTT ignoré et respect du duty cycle légal de 10 % (EU_868).
 
-L'assistant propose aussi un preset `LONG_FAST` (hop limit 5), signalé **hors Netiquette** : c'est en pratique le preset encore majoritaire du mesh — utile pour la visibilité des autres nœuds et les tests de portée — mais le standard communautaire reste `MEDIUM_FAST`. Les deux nœuds MeshBridge doivent recevoir le même preset pour communiquer.
+L'assistant propose aussi un preset `LONG_FAST` (hop limit 7, le maximum), signalé **hors Netiquette** : c'est en pratique le preset encore majoritaire du mesh — utile pour la visibilité des autres nœuds et les tests de portée — mais le standard communautaire reste `MEDIUM_FAST`. Les deux nœuds MeshBridge doivent recevoir le même preset pour communiquer.
 
 Document rédigé par la communauté Meshtastic Suisse (MeshTrafficObserver, Haflinger 73, CamFlyerCH, Fox 71) — inclus ici avec attribution, à titre de référence de configuration.
 

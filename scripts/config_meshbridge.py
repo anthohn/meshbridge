@@ -100,7 +100,7 @@ class NodeProfile:
             if field == "lora.modem_preset":
                 custom_common.append((field, self.modem_preset))
             elif field == "lora.hop_limit" and self.modem_preset == "LONG_FAST":
-                custom_common.append((field, "5"))
+                custom_common.append((field, "7"))
             else:
                 custom_common.append((field, value))
         return custom_common + self.role_settings()
@@ -709,19 +709,19 @@ def ask_modem_preset():
     MeshBridge doivent recevoir le même (sinon les radios ne s'entendent plus)."""
     c = menu("Modem preset", [
         ("MEDIUM_FAST", "norme Netiquette Suisse · 3 rebonds"),
-        ("LONG_FAST", "hors Netiquette · majoritaire en pratique, portée maximale · 5 rebonds"),
+        ("LONG_FAST", "hors Netiquette · majoritaire en pratique, portée maximale · 7 rebonds"),
     ], note="Le même pour les deux nœuds MeshBridge, sinon les radios ne s'entendent plus.")
     if c == 1:
         info("MEDIUM_FAST : lora.hop_limit configuré à 3 rebonds.")
         return "MEDIUM_FAST"
-    info("LONG_FAST : lora.hop_limit configuré à 5 rebonds (hors Netiquette).")
+    info("LONG_FAST : lora.hop_limit configuré à 7 rebonds (maximum, hors Netiquette).")
     return "LONG_FAST"
 
 
 def show_profile(profile):
     """Récapitulatif du profil retenu, juste avant de choisir quoi en faire."""
     section("Profil retenu")
-    hop = "5" if profile.modem_preset == "LONG_FAST" else "3"
+    hop = "7" if profile.modem_preset == "LONG_FAST" else "3"
     canaux = "0 public · 1 MeshBridge" if profile.meshbridge else "0 public"
     print(f"  {GRIS}{'Nom':<8}{FIN}{profile.long_name} ({profile.short_name})")
     print(f"  {GRIS}{'Rôle':<8}{FIN}{profile.role} · rebroadcast {profile.rebroadcast}")
