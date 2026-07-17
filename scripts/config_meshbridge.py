@@ -107,10 +107,11 @@ class NodeProfile:
 
 
 # Les deux nœuds du projet : Pierre fixe (relié au Pi), Paul portable.
+# Nom court = emoji : affiché comme avatar du nœud par les applis Meshtastic.
 MESHBRIDGE_NODES = {
-    "Maison":   NodeProfile("Pierre", "PIE", "CLIENT", "ALL",
+    "Maison":   NodeProfile("Pierre", "📡", "CLIENT", "ALL",
                             pos_secs="86400", fixed="true", meshbridge=True),
-    "Portable": NodeProfile("Paul", "PAU", "CLIENT_MUTE", "LOCAL_ONLY",
+    "Portable": NodeProfile("Paul", "🎒", "CLIENT_MUTE", "LOCAL_ONLY",
                             pos_secs="21600", fixed="false", meshbridge=True),
 }
 
