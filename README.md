@@ -110,7 +110,7 @@ Le script est un **assistant** : il détecte le nœud branché en USB et guide p
 
 L'assistant propose aussi un mode **nœud standard** (option 3) : configuration conforme à la Netiquette pour un nœud qui ne fait pas partie de MeshBridge — canal public uniquement, sans PSK. Le rôle suit la règle de la Netiquette : `CLIENT_MUTE` en zone dense ou pour tout nœud transporté, `CLIENT` en zone peu couverte (le nœud aide alors à relayer le mesh). Pour un nœud standard, un emoji optionnel peut servir de nom court : les applis Meshtastic l'affichent alors comme avatar du nœud (sur l'écran OLED des cartes, il s'affichera en revanche mal — choix purement cosmétique côté appli).
 
-Une fois le rôle et le preset choisis, l'assistant demande **Déployer** ou **Vérifier seulement** : ce second mode relit le nœud et le compare au profil choisi sans rien écrire — pratique pour contrôler la configuration d'un nœud déjà déployé.
+Une fois le rôle et le preset choisis, l'assistant demande **Déployer** ou **Vérifier seulement** : ce second mode relit le nœud et le compare au profil choisi — pratique pour contrôler la configuration d'un nœud déjà déployé. Si des écarts sont détectés, il propose de les corriger de façon ciblée ; rien n'est écrit sans confirmation.
 
 #### Dépannage (Linux)
 

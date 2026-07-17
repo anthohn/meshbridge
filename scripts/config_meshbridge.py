@@ -691,7 +691,7 @@ def ask_action():
     """Menu d'action : déployer (écrit) ou vérifier seulement (aucune écriture)."""
     print("  Que faire avec ce profil ?")
     print("    1. Déployer (écrit la configuration sur le nœud)")
-    print("    2. Vérifier seulement (aucune écriture, compare au profil choisi)")
+    print("    2. Vérifier seulement (compare au profil choisi ; ne corrige qu'avec accord)")
     while True:
         c = input("  Choix (1/2, Entrée = 1) : ").strip()
         if not c or c == "1":
@@ -701,17 +701,35 @@ def ask_action():
 
 
 def check_only(cli, profile):
-    """Relit le nœud et le compare au profil choisi, sans rien écrire."""
+    """Relit le nœud et le compare au profil choisi. N'écrit rien, sauf si
+    l'utilisateur accepte de corriger les écarts détectés — mêmes corrections
+    ciblées que la boucle de convergence du déploiement (fix_gaps)."""
     try:
-        conforme, _ = verify(cli, profile)
+        conforme, gaps = verify(cli, profile)
     except Exception as e:
         fail(f"Vérification interrompue : {e}")
         return
     print("")
     if conforme:
         print(f"  \033[92m✅ '{profile.long_name}' déjà conforme au profil choisi.\033[0m")
-    else:
-        print(f"  \033[91m⚠ '{profile.long_name}' NE correspond PAS au profil choisi (voir ci-dessus).\033[0m")
+        return
+    print(f"  \033[91m⚠ '{profile.long_name}' NE correspond PAS au profil choisi (voir ci-dessus).\033[0m")
+    if not gaps:
+        # Seuls les canaux sont en écart : pas corrigeable champ par champ.
+        print("  \033[93mÉcart sur les canaux : relancer en mode Déployer pour les remettre à neuf.\033[0m")
+        return
+    if not ask_yes_no("  Corriger ces écarts maintenant (écrit sur le nœud) ?"):
+        return
+    try:
+        fix_gaps(cli, profile, gaps)
+        conforme, _ = verify(cli, profile)
+        print("")
+        if conforme:
+            print(f"  \033[92m✅ '{profile.long_name}' corrigé et conforme.\033[0m")
+        else:
+            print(f"  \033[91m⚠ Toujours NON conforme — relancer en mode Déployer.\033[0m")
+    except Exception as e:
+        fail(f"Correction interrompue : {e}")
 
 
 def assist_node(cli):
