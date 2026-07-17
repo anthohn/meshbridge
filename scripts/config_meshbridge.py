@@ -628,33 +628,46 @@ def ask_role():
     long_name = ""
     while not long_name:
         long_name = input("  Nom long (neutre de préférence) : ").strip()
-    emoji = ask_emoji()
-    if emoji:
-        long_name = f"{long_name} {emoji}"
-    short_name = ""
-    while not 2 <= len(short_name) <= 4:
-        short_name = input("  Nom court (2 à 4 caractères) : ").strip()
+    short_name = ask_emoji()      # emoji = avatar du nœud dans les applis
+    while not short_name:
+        s = input("  Nom court (2 à 4 caractères) : ").strip()
+        if len(s.encode()) > 4:
+            # len() compte les code points, pas les octets : un drapeau 🇨🇭 (2 code
+            # points, 8 octets) passerait le test 2-4 mais serait refusé par le nœud.
+            print("  \033[93mTrop long pour le firmware (4 octets max) — le nœud le refuserait.\033[0m")
+        elif 2 <= len(s) <= 4:
+            short_name = s
     mobile = ask_yes_no("  Nœud mobile (sac, voiture) plutôt que fixe ?")
     return standard_profile(long_name, short_name, mobile, choose_standard_role(mobile))
 
 
 def ask_emoji():
-    """Emoji optionnel ajouté au nom long (cosmétique, visible dans le NodeInfo
-    de tous les nœuds — n'affecte pas le nom court, réservé au firmware)."""
-    print("  Ajouter un emoji à ce nom ? (visible dans le NodeInfo)")
-    print("    1. Aucun (Entrée)")
+    """Emoji optionnel utilisé comme NOM COURT : les applis Meshtastic
+    l'affichent comme avatar du nœud. Limite firmware : 4 octets UTF-8 —
+    les emoji composés (drapeaux, variantes) débordent et sont refusés.
+    (Sur l'écran OLED des cartes, l'emoji s'affichera mal : compromis assumé.)"""
+    print("  Utiliser un emoji comme nom court ? (affiché comme avatar dans l'appli)")
+    print("    1. Aucun (Entrée) — saisir un nom court classique")
     print("    2. 🥾 Randonneur")
     print("    3. 🚗 Véhicule")
     print("    4. 🏠 Fixe")
     print("    5. 📡 Relais")
     print("    6. Autre (saisir un emoji)")
     presets = {"2": "🥾", "3": "🚗", "4": "🏠", "5": "📡"}
-    c = input("  Choix (1-6, Entrée = 1) : ").strip()
-    if c in presets:
-        return presets[c]
-    if c == "6":
-        return input("  Emoji : ").strip()
-    return ""
+    while True:
+        c = input("  Choix (1-6, Entrée = 1) : ").strip()
+        if not c or c == "1":
+            return ""
+        if c in presets:
+            return presets[c]
+        if c == "6":
+            c = input("  Emoji : ").strip()
+        if c and not c.isascii():        # emoji tapé directement (menu ou option 6)
+            if len(c.encode()) <= 4:
+                return c
+            print("  \033[93mEmoji trop long pour le firmware (4 octets max) — drapeaux et variantes ne tiennent pas.\033[0m")
+        else:
+            print("  \033[93mChoix non reconnu.\033[0m")
 
 
 def ask_modem_preset():
