@@ -131,7 +131,18 @@ def on_receive(packet, interface) -> None:
 
 
 def on_connection_lost(interface, topic=pub.AUTO_TOPIC) -> None:
-    """Callback pubsub : Meshtastic signale une déconnexion BLE."""
+    """Callback pubsub : Meshtastic signale une déconnexion BLE.
+
+    On ne réagit qu'à la déconnexion de l'interface *active*. Une
+    tentative de connexion ratée (nœud absent au démarrage) et la
+    fermeture volontaire pendant la reconnexion émettent le même
+    événement, de façon différée : sans ce filtre, ces signaux
+    parasites démontent en boucle la connexion tout juste rétablie
+    (bug « nœud allumé après le Pi »). Chaque BLEInterface étant un
+    objet unique, comparer à _iface["handle"] suffit à les écarter.
+    """
+    if interface is not _iface["handle"]:
+        return
     log.warning("[BLE] connexion perdue — reconnexion en cours…")
     _connection_lost.set()
 
@@ -195,7 +206,10 @@ def main() -> None:
             # On dort jusqu'à ce qu'une déconnexion soit signalée
             _connection_lost.wait()
 
-            # Nettoyage propre avant de retenter
+            # Nettoyage propre avant de retenter. On détache le handle
+            # AVANT close() : la fermeture émet un connection.lost différé
+            # que on_connection_lost doit ignorer (interface != handle
+            # courant, désormais None). Ne pas inverser ces deux lignes.
             log.info("[BLE] fermeture de l'interface avant reconnexion…")
             _iface["handle"] = None
             try:
