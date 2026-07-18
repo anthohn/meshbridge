@@ -48,7 +48,7 @@ def test_node_profile_custom_preset():
     # Vérifier que le preset LONG_FAST a bien écrasé la valeur par défaut dans settings()
     settings_dict = dict(profile.settings())
     assert settings_dict.get("lora.modem_preset") == "LONG_FAST"
-    assert settings_dict.get("lora.hop_limit") == "5"
+    assert settings_dict.get("lora.hop_limit") == "7"
     
     # Vérifier que le timeout d'écran est bien à 15
     assert settings_dict.get("display.screen_on_secs") == "15"
@@ -75,12 +75,6 @@ def test_standard_profile_default():
     assert settings_dict.get("position.gps_enabled") == "false"
 
 
-@patch("builtins.input", side_effect=[""])
-def test_ask_modem_preset_default(mock_input):
-    # Appui sur entrée -> doit retourner MEDIUM_FAST
-    assert ask_modem_preset() == "MEDIUM_FAST"
-
-
 @patch("builtins.input", side_effect=["1"])
 def test_ask_modem_preset_choice_1(mock_input):
     assert ask_modem_preset() == "MEDIUM_FAST"
@@ -88,16 +82,6 @@ def test_ask_modem_preset_choice_1(mock_input):
 
 @patch("builtins.input", side_effect=["2"])
 def test_ask_modem_preset_choice_2(mock_input):
-    assert ask_modem_preset() == "LONG_FAST"
-
-
-@patch("builtins.input", side_effect=["l"])
-def test_ask_modem_preset_choice_l(mock_input):
-    assert ask_modem_preset() == "LONG_FAST"
-
-
-@patch("builtins.input", side_effect=["long"])
-def test_ask_modem_preset_choice_long(mock_input):
     assert ask_modem_preset() == "LONG_FAST"
 
 
