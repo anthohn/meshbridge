@@ -87,26 +87,13 @@ def worker() -> None:
             _tasks.task_done()
 
 
-def authentic_sender(packet, interface) -> int | None:
-    """Numéro de l'émetteur si le paquet est un DM signé par Paul, sinon None.
-    Trois garde-fous, du plus simple au plus fort :
-      1. le DM nous est adressé (to == nous) : ce n'est pas un broadcast ;
-      2. il est chiffré/authentifié par le firmware (pkiEncrypted) ;
-      3. il vient de Paul ET la clé publique vue par Pierre correspond à
-         celle épinglée dans le .env (barrière anti-usurpation)."""
-    if packet.get("to") != interface.myInfo.my_node_num:
-        return None
-    if not packet.get("pkiEncrypted"):
-        return None
-    sender = packet.get("from")
-    if sender != config.PAUL_NODE_NUM:
-        return None
-    node = (interface.nodesByNum or {}).get(sender, {})
-    seen_key = node.get("user", {}).get("publicKey")
-    if not config.PAUL_PUBLIC_KEY or seen_key != config.PAUL_PUBLIC_KEY:
-        log.warning(f"[AUTH] clé de Paul inattendue (vue={seen_key!r}) — DM ignoré")
-        return None
-    return sender
+def authentic_sender(packet) -> int | None:
+    """Numéro de l'émetteur si c'est un DM chiffré (PKC) venant de Paul, sinon
+    None. `pkiEncrypted` garantit un DM chiffré/authentifié par le firmware et
+    qui nous est adressé ; `from == Paul` garantit que c'est bien lui."""
+    if packet.get("pkiEncrypted") and packet.get("from") == config.PAUL_NODE_NUM:
+        return packet.get("from")
+    return None
 
 
 def on_receive(packet, interface) -> None:
@@ -117,8 +104,8 @@ def on_receive(packet, interface) -> None:
             return
 
         # On ne parle qu'à Paul, en DM chiffré. Tout le reste (broadcast,
-        # DM non signé, autre nœud) est ignoré en silence — pas d'oracle.
-        sender = authentic_sender(packet, interface)
+        # DM non chiffré, autre nœud) est ignoré en silence.
+        sender = authentic_sender(packet)
         if sender is None:
             return
 
@@ -188,8 +175,8 @@ def main() -> None:
 
     log.info(f"IA cloud : {'Gemini ✓' if config.GEMINI_KEY else 'Gemini ✗ (local seul)'}"
              f"  |  IA local : Ollama {config.OLLAMA_MODEL}")
-    if config.PAUL_NODE_NUM is None or not config.PAUL_PUBLIC_KEY:
-        log.warning("PAUL_NODE_ID / PAUL_PUBLIC_KEY absent du .env — aucune commande ne sera acceptée")
+    if config.PAUL_NODE_NUM is None:
+        log.warning("PAUL_NODE_ID absent du .env — aucune commande ne sera acceptée")
     else:
         log.info(f"Écoute des DM chiffrés de Paul (nœud {config.PAUL_NODE_NUM:08x})")
 

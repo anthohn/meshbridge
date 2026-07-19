@@ -51,13 +51,10 @@ PIERRE_BLE_MAC = os.environ.get("PIERRE_BLE_MAC", "")
 BLE_RECONNECT_MIN_S = 5      # premier délai de retry
 BLE_RECONNECT_MAX_S = 60     # plafond du délai de retry
 
-# --- Autorisation : dialogue chiffré de bout en bout avec Paul ---
-# Le bridge n'obéit qu'aux messages directs signés par Paul (PKC Meshtastic,
-# clés par nœud). Deux valeurs, lues dans l'app Meshtastic (détails de Paul) :
-#   - PAUL_NODE_ID    : le nœud à qui on fait confiance ;
-#   - PAUL_PUBLIC_KEY : sa clé publique, épinglée ici. Sans épinglage, un
-#     attaquant pourrait annoncer un faux « je suis Paul, voici ma clé » ;
-#     si la clé vue par Pierre diffère de celle-ci, on refuse le message.
+# --- Autorisation : dialogue chiffré avec Paul ---
+# Le bridge n'obéit qu'aux messages directs chiffrés (PKC Meshtastic) venant
+# de Paul. PAUL_NODE_ID est l'identifiant du nœud, lu dans l'app Meshtastic
+# (détails de Paul). Le chiffrement de bout en bout est assuré par le firmware.
 
 
 def _node_id_to_num(raw: str) -> int | None:
@@ -71,8 +68,7 @@ def _node_id_to_num(raw: str) -> int | None:
         return None
 
 
-PAUL_NODE_NUM   = _node_id_to_num(os.environ.get("PAUL_NODE_ID", ""))
-PAUL_PUBLIC_KEY = os.environ.get("PAUL_PUBLIC_KEY", "").strip()
+PAUL_NODE_NUM = _node_id_to_num(os.environ.get("PAUL_NODE_ID", ""))
 
 # --- Choix de l'IA ---
 # "auto"  : Gemini si dispo, sinon bascule sur Ollama (recommandé)
