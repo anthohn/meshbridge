@@ -14,9 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 try:
     from google import genai            # noqa: F401
 except ImportError:
-    google = types.ModuleType("google")
+    # Greffé sur le vrai namespace google s'il existe : le remplacer
+    # casserait google.protobuf, dont meshtastic (importé par bridge) dépend.
+    try:
+        import google
+    except ImportError:
+        google = types.ModuleType("google")
+        sys.modules["google"] = google
     google.genai = types.ModuleType("google.genai")
-    sys.modules["google"] = google
     sys.modules["google.genai"] = google.genai
 
 import pytest

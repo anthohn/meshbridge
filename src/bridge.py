@@ -50,15 +50,16 @@ _connection_lost = threading.Event()
 _unsent = {"reply": None}
 
 
-def safe_send(text: str, channel: int) -> bool:
-    """Émission BLE sérialisée. Renvoie False si l'envoi a échoué (déco)."""
+def safe_send(text: str, dest: int) -> bool:
+    """Émission BLE sérialisée, en DM chiffré (PKC) vers le nœud `dest`.
+    Renvoie False si l'envoi a échoué (déco)."""
     iface = _iface["handle"]
     if iface is None:
         log.warning(f"envoi ignoré (pas d'interface) : {text[:40]!r}")
         return False
     try:
         with _send_lock:
-            iface.sendText(text, channelIndex=channel)
+            iface.sendText(text, destinationId=dest, pkiEncrypted=True)
         return True
     except Exception as e:
         log.error(f"sendText a échoué : {e}")
@@ -69,16 +70,16 @@ def safe_send(text: str, channel: int) -> bool:
 def worker() -> None:
     """Traite les commandes en tâche de fond, sans bloquer la réception."""
     while True:
-        channel, verb, arg = _tasks.get()
+        dest, verb, arg = _tasks.get()
         try:
             t0 = time.time()
             response = dispatch(verb, arg)
             dt = time.time() - t0
-            if safe_send(response, channel):
+            if safe_send(response, dest):
                 n = len(response.encode("utf-8"))
-                log.info(f"[OUT] ch{channel} /{verb} → {n} o en {dt:.1f}s")
+                log.info(f"[OUT] DM /{verb} → {n} o en {dt:.1f}s")
             else:
-                _unsent["reply"] = (response, channel)
+                _unsent["reply"] = (response, dest)
                 log.warning(f"[OUT] /{verb} : BLE indisponible — réponse mise en attente")
         except Exception as e:
             log.error(f"worker : {e}")
@@ -86,19 +87,39 @@ def worker() -> None:
             _tasks.task_done()
 
 
+def authentic_sender(packet, interface) -> int | None:
+    """Numéro de l'émetteur si le paquet est un DM signé par Paul, sinon None.
+    Trois garde-fous, du plus simple au plus fort :
+      1. le DM nous est adressé (to == nous) : ce n'est pas un broadcast ;
+      2. il est chiffré/authentifié par le firmware (pkiEncrypted) ;
+      3. il vient de Paul ET la clé publique vue par Pierre correspond à
+         celle épinglée dans le .env (barrière anti-usurpation)."""
+    if packet.get("to") != interface.myInfo.my_node_num:
+        return None
+    if not packet.get("pkiEncrypted"):
+        return None
+    sender = packet.get("from")
+    if sender != config.PAUL_NODE_NUM:
+        return None
+    node = (interface.nodesByNum or {}).get(sender, {})
+    seen_key = node.get("user", {}).get("publicKey")
+    if not config.PAUL_PUBLIC_KEY or seen_key != config.PAUL_PUBLIC_KEY:
+        log.warning(f"[AUTH] clé de Paul inattendue (vue={seen_key!r}) — DM ignoré")
+        return None
+    return sender
+
+
 def on_receive(packet, interface) -> None:
     """Callback radio : valide, enfile. Ne bloque jamais."""
     try:
-        # Anti-boucle : ignore nos propres messages
-        if packet.get("from") == interface.myInfo.my_node_num:
-            return
-
         decoded = packet.get("decoded", {})
         if decoded.get("portnum") != "TEXT_MESSAGE_APP":
             return
 
-        # Uniquement le canal privé MeshBridge
-        if packet.get("channel", 0) != config.MESHBRIDGE_CHANNEL:
+        # On ne parle qu'à Paul, en DM chiffré. Tout le reste (broadcast,
+        # DM non signé, autre nœud) est ignoré en silence — pas d'oracle.
+        sender = authentic_sender(packet, interface)
+        if sender is None:
             return
 
         message = (decoded.get("text") or "").strip()
@@ -110,12 +131,11 @@ def on_receive(packet, interface) -> None:
             return
         verb = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
-        channel = packet.get("channel", config.MESHBRIDGE_CHANNEL)
 
-        log.info(f"[IN]  ch{channel} → /{verb} {arg!r}")
+        log.info(f"[IN]  DM Paul → /{verb} {arg!r}")
 
         try:
-            _tasks.put_nowait((channel, verb, arg))
+            _tasks.put_nowait((sender, verb, arg))
         except queue.Full:
             # On jette sans répondre : répondre à un flood amplifierait
             # le trafic radio (duty cycle). L'événement reste loggé.
@@ -124,7 +144,7 @@ def on_receive(packet, interface) -> None:
 
         # ACK seulement si la commande est réellement en file
         if config.SEND_ACK and verb in SLOW:
-            safe_send(config.ACK_TEXT, channel)
+            safe_send(config.ACK_TEXT, sender)
 
     except Exception as e:
         log.error(f"on_receive : {e}")
@@ -168,7 +188,10 @@ def main() -> None:
 
     log.info(f"IA cloud : {'Gemini ✓' if config.GEMINI_KEY else 'Gemini ✗ (local seul)'}"
              f"  |  IA local : Ollama {config.OLLAMA_MODEL}")
-    log.info(f"Écoute + réponse sur le canal {config.MESHBRIDGE_CHANNEL} (MeshBridge privé)")
+    if config.PAUL_NODE_NUM is None or not config.PAUL_PUBLIC_KEY:
+        log.warning("PAUL_NODE_ID / PAUL_PUBLIC_KEY absent du .env — aucune commande ne sera acceptée")
+    else:
+        log.info(f"Écoute des DM chiffrés de Paul (nœud {config.PAUL_NODE_NUM:08x})")
 
     # Callbacks pubsub (une seule fois, valides pour toutes les reconnexions)
     pub.subscribe(on_receive, "meshtastic.receive.text")
